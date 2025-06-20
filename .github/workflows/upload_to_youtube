@@ -1,0 +1,26 @@
+upload_to_youtube:
+    runs-on: ubuntu-latest
+    needs: generate_parody_video # generate_parody_video 작업이 성공해야 실행됩니다.
+    steps:
+      - name: 📥 코드 체크아웃 (최신 커밋 포함)
+        uses: actions/checkout@v4
+        with:
+          # 이전 단계에서 푸시한 커밋을 포함하기 위해 전체 히스토리를 가져옵니다.
+          fetch-depth: 0
+
+      - name: 🐍 Python 환경 설정
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 🐍 YouTube 업로드용 패키지 설치
+        run: pip install -r youtube_uploader/requirements_youtube.txt
+
+      - name: 🔐 YouTube 인증 정보 설정
+        run: |
+          mkdir -p youtube_uploader
+          echo "${{ secrets.YOUTUBE_CLIENT_SECRETS }}" > youtube_uploader/client_secrets.json
+          printf "%s" '${{ secrets.YOUTUBE_TOKEN_JSON }}' > youtube_uploader/token.json
+
+      - name: 🚀 YouTube에 동영상 업로드
+        run: python youtube_uploader/upload_to_youtube.py
