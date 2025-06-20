@@ -4,11 +4,11 @@ name: OU Stock Parody Video Generation
 
 on:
   schedule:
-    # 매일 저녁 8시 KST (11:00 UTC)에 실행
-    - cron: '0 11 * * *' 
+    # 매일 오전 6시 KST (전날 21:00 UTC)에 실행
+    - cron: '0 21 * * *'
   # 수동 실행을 위한 workflow_dispatch 추가
   workflow_dispatch:
-  
+
 jobs:
   generate_parody_video:
     runs-on: ubuntu-latest
@@ -25,7 +25,7 @@ jobs:
       - name: 🐍 Python 환경 설정
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.9' # 또는 프로젝트에 맞는 Python 버전
 
       - name: 🎬 FFmpeg 설치 (동영상 제작용)
         run: |
@@ -35,28 +35,12 @@ jobs:
       - name: 🐍 Python 패키지 설치
         run: pip install -r requirements.txt
 
-      - name: 🔐 환경변수 설정
+      - name: 🎯 주식 패러디 동영상 생성 실행
+        # GitHub Secrets를 스크립트가 읽을 수 있도록 환경 변수로 직접 주입합니다.
+        # .env 나 json 파일을 별도로 만들 필요가 없어졌습니다.
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
-        run: |
-          # Claude API 키 설정
-          if [ -z "$CLAUDE_API_KEY" ]; then
-            echo "❌ CLAUDE_API_KEY가 설정되지 않았습니다!"
-            exit 1
-          fi
-          echo "CLAUDE_API_KEY=$CLAUDE_API_KEY" >> .env
-
-          # Google 서비스 계정 키 설정
-          if [ -z "$GOOGLE_SERVICE_ACCOUNT" ]; then
-            echo "❌ GOOGLE_SERVICE_ACCOUNT가 설정되지 않았습니다!"
-            exit 1
-          fi
-          echo "$GOOGLE_SERVICE_ACCOUNT" > google_service_account.json
-
-          echo "✅ 환경변수 설정 완료"
-
-      - name: 🎯 주식 패러디 동영상 생성 실행
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
         run: |
           python step4_ou_stock_parody_final.py
 
@@ -65,12 +49,13 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # Git LFS로 동영상 파일 추적
+          # Git LFS로 동영상 파일 추적 설정
           git lfs track "parody_video/*.mp4"
           git add .gitattributes
           
-          # 생성된 동영상 파일 추가
+          # 생성된 동영상과 카드뉴스 이미지 추가
           git add parody_video/*.mp4
+          git add parody_card/*.png
           
           # 변경사항이 있을 경우에만 커밋 및 푸시
           if git diff --staged --quiet; then
