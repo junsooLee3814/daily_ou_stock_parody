@@ -5,4 +5,5 @@ Pillow
 python-dotenv
 anthropic
 google-generativeai
-emoji 
+emoji
+feedparser 
