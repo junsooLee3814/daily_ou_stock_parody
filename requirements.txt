@@ -1,0 +1,9 @@
+gspread
+oauth2client
+pandas
+Pillow
+python-dotenv
+anthropic
+google-generativeai
+emoji
+feedparser 
