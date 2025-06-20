@@ -20,11 +20,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      # --- [수정] working-directory를 지정하여 경로 문제를 해결 ---
+      # --- [수정] 현재 경로와 권한을 포함한 상세 파일 목록 출력 ---
+      - name: 🐛 Debug current path and permissions
+        run: |
+          pwd
+          ls -la
+          ls -la youtube_uploader/
+      # --------------------------------------------------------
+
       - name: 📦 Install YouTube uploader dependencies
-        working-directory: ./youtube_uploader
+        working-directory: youtube_uploader # "./" 를 제거하여 경로를 단순화
         run: pip install -r requirements_youtube.txt
-      # ----------------------------------------------------
 
       - name: 🔐 Restore YouTube authentication files
         run: |
@@ -36,6 +42,4 @@ jobs:
         run: cat youtube_uploader/token.json
 
       - name: 🚀 Upload to YouTube
-        # upload_to_youtube.py 스크립트가 parody_video 폴더에서
-        # 가장 최신 동영상을 자동으로 찾아 업로드합니다.
         run: python youtube_uploader/upload_to_youtube.py
