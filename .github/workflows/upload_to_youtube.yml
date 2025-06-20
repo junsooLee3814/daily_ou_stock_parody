@@ -12,7 +12,6 @@ jobs:
     steps:
       - name: 📥 Checkout repository with LFS
         uses: actions/checkout@v4
-        # Git LFS로 관리되는 동영상 파일 원본을 가져옵니다.
         with:
           lfs: true
 
@@ -21,10 +20,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      # --- [추가] 디버깅을 위해 파일 목록 출력 ---
       - name: 🐛 List all files for debugging
         run: ls -R
-      # -----------------------------------------
+
+      # --- [추가] 파일 내용을 직접 읽어보기 ---
+      - name: 🐛 Verify requirements file readability
+        run: cat youtube_uploader/requirements_youtube.txt
+      # ------------------------------------
 
       - name: 📦 Install YouTube uploader dependencies
         run: pip install -r youtube_uploader/requirements_youtube.txt
@@ -39,6 +41,4 @@ jobs:
         run: cat youtube_uploader/token.json
 
       - name: 🚀 Upload to YouTube
-        # upload_to_youtube.py 스크립트가 parody_video 폴더에서
-        # 가장 최신 동영상을 자동으로 찾아 업로드합니다.
         run: python youtube_uploader/upload_to_youtube.py
