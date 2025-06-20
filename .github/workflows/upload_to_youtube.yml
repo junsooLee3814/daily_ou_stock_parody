@@ -20,16 +20,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 🐛 List all files for debugging
-        run: ls -R
-
-      # --- [추가] 파일 내용을 직접 읽어보기 ---
-      - name: 🐛 Verify requirements file readability
-        run: cat youtube_uploader/requirements_youtube.txt
-      # ------------------------------------
-
+      # --- [수정] working-directory를 지정하여 경로 문제를 해결 ---
       - name: 📦 Install YouTube uploader dependencies
-        run: pip install -r youtube_uploader/requirements_youtube.txt
+        working-directory: ./youtube_uploader
+        run: pip install -r requirements_youtube.txt
+      # ----------------------------------------------------
 
       - name: 🔐 Restore YouTube authentication files
         run: |
@@ -41,4 +36,6 @@ jobs:
         run: cat youtube_uploader/token.json
 
       - name: 🚀 Upload to YouTube
+        # upload_to_youtube.py 스크립트가 parody_video 폴더에서
+        # 가장 최신 동영상을 자동으로 찾아 업로드합니다.
         run: python youtube_uploader/upload_to_youtube.py
