@@ -53,6 +53,19 @@ def main():
     start_time = datetime.now()
     print(f"=== O_U Stock Parody 자동 생성 파이프라인 시작 ({start_time.strftime('%Y-%m-%d %H:%M:%S')}) ===")
     
+    # --- parody_video 폴더의 .mp4 파일 삭제 ---
+    video_folder = 'parody_video'
+    if os.path.exists(video_folder):
+        for filename in os.listdir(video_folder):
+            if filename.endswith('.mp4'):
+                file_path = os.path.join(video_folder, filename)
+                try:
+                    os.remove(file_path)
+                    print(f"[파일 삭제] {file_path}")
+                except OSError as e:
+                    print(f"[오류] 파일 삭제 실패: {file_path} ({e})")
+    # -----------------------------------------
+
     scripts_to_run = [
         "step1_ou_stock_parody_collection.py",
         "step2_ou_stock_parody_card.py",
