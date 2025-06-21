@@ -9,6 +9,7 @@ import json
 import re
 from pathlib import Path
 import time
+from zoneinfo import ZoneInfo
 
 # .env 파일의 절대 경로를 지정하여 로드
 env_path = Path('.') / '.env'
@@ -18,6 +19,9 @@ load_dotenv(dotenv_path=env_path, verbose=True)
 CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 if not CLAUDE_API_KEY:
     raise ValueError("CLAUDE_API_KEY 환경 변수가 설정되지 않았습니다.")
+
+# 한국 시간대 정의
+KST = ZoneInfo("Asia/Seoul")
 
 def parse_rawdata(file_path='asset/rawdata.txt'):
     """rawdata.txt 파일을 파싱하여 설정값을 딕셔너리로 반환합니다."""
@@ -64,7 +68,7 @@ def fetch_news(rss_url, existing_news=None):
     
     feed = feedparser.parse(rss_url)
     news_list = []
-    today = datetime.now().date()
+    today = datetime.now(KST).date()
     yesterday = today - timedelta(days=1)
     
     for entry in feed.entries:
@@ -322,13 +326,14 @@ def main():
     print(f"\\n[3/5] 중요도 상위 {len(top_news)}개 뉴스로 패러디 생성 중...")
     parody_data_list = []
 
-    today_str = datetime.now().strftime('%Y-%m-%d')
+    # 한국 시간 기준으로 오늘 날짜를 한 번만 계산
+    today_str = datetime.now(KST).strftime('%Y-%m-%d')
     existing_parody_titles = [] # 생성된 패러디 제목을 저장할 리스트
     for i, news in enumerate(top_news):
         news_content = f"제목: {news['title']}\\n내용: {news['summary']}\\n링크: {news['link']}"
         
         # 프롬프트에 사용될 변수들을 미리 준비하여 f-string 오류 방지
-        current_date = datetime.now().strftime('%Y-%m-%d')
+        current_date = today_str # 한국 시간대 기준으로 생성된 날짜 사용
         original_title_safe = news['title'].replace('"', "'")
         news_link = news['link']
         news_title = news['title']
