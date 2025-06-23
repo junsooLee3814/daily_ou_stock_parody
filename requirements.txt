@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 gspread
 oauth2client
 pandas
@@ -6,4 +7,14 @@ python-dotenv
 anthropic
 google-generativeai
 emoji
+=======
+gspread
+oauth2client
+pandas
+Pillow
+python-dotenv
+anthropic
+google-generativeai
+emoji
+>>>>>>> cbe582cca1760a050b57fb15dae9f5b9af78e3d1
 feedparser 

@@ -1,2 +1,9 @@
+<<<<<<< HEAD
 google-auth-oauthlib
 google-api-python-client 
+=======
+   google-auth
+   google-auth-oauthlib
+   google-auth-httplib2
+   google-api-python-client
+>>>>>>> cbe582cca1760a050b57fb15dae9f5b9af78e3d1
