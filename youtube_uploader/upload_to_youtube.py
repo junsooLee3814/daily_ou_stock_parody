@@ -4,6 +4,7 @@ from datetime import datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from common_utils import get_today_kst
 
 # 유튜브 업로드를 위한 권한 범위
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
@@ -55,7 +56,7 @@ def upload_video(file_path, title, description, tags):
 
 if __name__ == '__main__':
     # 오늘 날짜를 "YYYY년 MM월 DD일" 형식으로 구하기
-    today = datetime.now().strftime('%Y년 %m월 %d일')
+    today = get_today_kst().strftime('%Y년 %m월 %d일')
 
     # 유튜브 영상 제목, 설명, 태그 자동 생성
     title = f"{today} 주식뉴스 | AI가 분석한 오늘의 증시 핵심 포인트 | OU증권 경제뉴스 패러디. 이 포스팅은 쿠팡파트너스 활동으로 일정보수를 지급받습니다."

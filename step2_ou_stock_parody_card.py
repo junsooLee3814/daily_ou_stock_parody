@@ -174,6 +174,17 @@ for idx, row in df.iterrows():
         y = draw_text(draw, (LEFT_MARGIN, y), str(row['punchline']), 
                                         punchline_font, BLACK_COLOR, 
                                         max_text_width, line_spacing_ratio=LINE_SPACING_RATIO, spacing=-3)
+        # 펀치라인 아래 2줄 간격 추가
+        y += int(punchline_font.size * 2)
+
+    # 오유-교훈(유머레슨) 블록을 펀치라인 바로 아래에 출력
+    if 'humor_lesson' in row and pd.notna(row['humor_lesson']):
+        lesson_label_text = "[오유_교훈]"
+        lesson_content_text = str(row['humor_lesson'])
+        # 라벨
+        y = draw_text(draw, (LEFT_MARGIN, y), lesson_label_text, lesson_label_font, GREEN_COLOR, max_text_width, line_spacing_ratio=1.5, align='left', spacing=-4)
+        # 내용
+        y = draw_text(draw, (LEFT_MARGIN, y), lesson_content_text, lesson_font, GREEN_COLOR, max_text_width, line_spacing_ratio=1.5, align='center', spacing=-4)
 
     # --- 하단부터 역순으로 그리는 텍스트 ---
     bottom_y = CARD_HEIGHT - BOTTOM_MARGIN
@@ -220,44 +231,7 @@ for idx, row in df.iterrows():
         
         draw_text(draw, (LEFT_MARGIN, disclaimer_y_start), disclaimer_text, 
                         disclaimer_font, GRAY_COLOR, max_text_width, spacing=-4)
-        bottom_y = disclaimer_y_start - 120
-
-    # 유머 교훈
-    if 'humor_lesson' in row and pd.notna(row['humor_lesson']):
-        lesson_label_text = "[오유_교훈]"
-        lesson_content_text = str(row['humor_lesson'])
-
-        # 높이 추정 (정확하지 않을 수 있지만, 레이아웃에 도움)
-        label_height = int(lesson_label_font.size * 1.5)
-        
-        words = lesson_content_text.split()
-        content_lines = []
-        if words:
-            current_line = words[0]
-            for word in words[1:]:
-                if lesson_font.getlength(current_line + ' ' + word) <= max_text_width:
-                    current_line += ' ' + word
-                else:
-                    content_lines.append(current_line)
-                    current_line = word
-            content_lines.append(current_line)
-        
-        content_height = len(content_lines) * int(lesson_font.size * 1.5)
-        total_height = label_height + content_height
-        
-        block_start_y = bottom_y - total_height
-
-        # 1. [humor_lesson] 텍스트 그리기 (왼쪽 정렬)
-        label_end_y = draw_text(draw, (LEFT_MARGIN, block_start_y), lesson_label_text, 
-                                    lesson_label_font, GREEN_COLOR, 
-                                    max_text_width, line_spacing_ratio=1.5, 
-                                    align='left', spacing=-4)
-        
-        # 2. 실제 교훈 내용 그리기 (가운데 정렬)
-        draw_text(draw, (LEFT_MARGIN, label_end_y), lesson_content_text, 
-                                    lesson_font, GREEN_COLOR, 
-                                    max_text_width, line_spacing_ratio=1.5, 
-                                    align='center', spacing=-4)
+        bottom_y = disclaimer_y_start - 10
 
     # 카드 저장
     out_path = os.path.join('parody_card', f'parody_card_{idx+1:02d}.png')
