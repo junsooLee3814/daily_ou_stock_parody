@@ -14,16 +14,16 @@ LEFT_MARGIN = 80
 RIGHT_MARGIN = 80
 TOP_MARGIN = 250
 BOTTOM_MARGIN = 300
-LINE_SPACING_RATIO = 1.5
-SECTION_GAP = 50
+LINE_SPACING_RATIO = 1.2
+SECTION_GAP = 40
 
 # --- 폰트 크기 ---
 DATE_FONT_SIZE = 45
-PARODY_TITLE_FONT_SIZE = 75
+PARODY_TITLE_FONT_SIZE = 70
 SETUP_FONT_SIZE = 48
 PUNCHLINE_FONT_SIZE = 48
 LESSON_LABEL_FONT_SIZE = 48
-LESSON_FONT_SIZE = 65
+LESSON_FONT_SIZE = 60
 DISCLAIMER_FONT_SIZE = 28
 SOURCE_FONT_SIZE = 28
 
@@ -257,7 +257,7 @@ for idx, row in df.iterrows():
         draw_text(draw, (LEFT_MARGIN, label_end_y), lesson_content_text, 
                                     lesson_font, GREEN_COLOR, 
                                     max_text_width, line_spacing_ratio=1.5, 
-                                    align='center', spacing=-3)
+                                    align='center', spacing=-4)
 
     # 카드 저장
     out_path = os.path.join('parody_card', f'parody_card_{idx+1:02d}.png')
