@@ -3,7 +3,7 @@ import feedparser
 from datetime import datetime, timedelta
 from anthropic import Anthropic
 from dotenv import load_dotenv
-from common_utils import get_gsheet
+from common_utils import get_gsheet, get_today_kst
 from difflib import SequenceMatcher
 import json
 import re
@@ -68,7 +68,7 @@ def fetch_news(rss_url, existing_news=None):
     
     feed = feedparser.parse(rss_url)
     news_list = []
-    today = datetime.now(KST).date()
+    today = get_today_kst()
     yesterday = today - timedelta(days=1)
     
     for entry in feed.entries:
@@ -327,7 +327,7 @@ def main():
     parody_data_list = []
 
     # 한국 시간 기준으로 오늘 날짜를 한 번만 계산
-    today_str = datetime.now(KST).strftime('%Y-%m-%d')
+    today_str = get_today_kst().strftime('%Y-%m-%d')
     existing_parody_titles = [] # 생성된 패러디 제목을 저장할 리스트
     for i, news in enumerate(top_news):
         news_content = f"제목: {news['title']}\n내용: {news['summary']}\n링크: {news['link']}"
@@ -349,8 +349,13 @@ def main():
 ## 📝 패러디 생성 가이드라인
 1.  **패러디 제목 (parody_title):**
     - **(중요) 15~20자 내외로 매우 짧고 컴팩트하게** 만들어주세요.
-    - 뉴스 내용을 한 문장으로 압축하면서도, 웃음을 유발하는 반전이나 과장을 담아주세요.
-    - 예시: "삼전, HBM 테스트 통과? AI는 안도의 한숨"
+    - **반드시 아래 예시처럼, 감탄형/현실형/세대형/실감형 후킹문구를 제목 앞 또는 뒤에 붙여주세요.**
+    - 후킹문구 예시:
+      - 감탄형: "이게 맞나?", "말이 되나?", "세상에나...", "어이없네"
+      - 현실형: "결국 우리만", "또 서민만", "역시나", "뻔한 수순"
+      - 세대형: "요즘 세상", "우리 때는", "젊은 애들", "옛날 같으면"
+      - 실감형: "체감 100%", "현실 직격탄", "솔직 후기", "진짜 이유"
+    - 예시: "AI 일자리 뺏는다는데... 말이 되나?", "트럼프 관세 올린다면서... 결국 우리만 손해", "양자컴퓨터 나왔다는데... 요즘 세상 따라가기 힘들어"
 2.  **상황 설정 (setup):**
     - **(중요) 35자 내외의 초단문으로** 배경을 설명해주세요.
     - 뉴스 내용을 바탕으로, 유머를 위한 무대를 만들어주세요.
