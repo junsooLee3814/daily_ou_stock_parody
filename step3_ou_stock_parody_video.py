@@ -65,7 +65,7 @@ CARD_IMG_DIR = os.path.join(BASE_DIR, 'parody_card')
 VIDEO_OUT_DIR = os.path.join(BASE_DIR, 'parody_video')
 SINGLE_CLIP_DIR = os.path.join(VIDEO_OUT_DIR, 'single_clips')
 
-INTRO_IMG_PATH = os.path.join(BASE_DIR, 'asset', 'intro_ou_stock.jpg')
+INTRO_IMG_PATH = os.path.join(BASE_DIR, 'asset', 'intro_OU_stock.jpg')
 BGM_PATH = os.path.join(BASE_DIR, 'asset', 'bgm.mp3')
 
 INTRO_CLIP_PATH = os.path.join(SINGLE_CLIP_DIR, f'intro_clip_{now_str}.mp4')
