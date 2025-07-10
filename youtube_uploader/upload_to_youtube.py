@@ -66,7 +66,7 @@ def generate_viral_title_from_news():
 
 def get_news_based_description(keyword):
     """뉴스 키워드에 맞는 설명 생성 (쿠팡파트너스 문구는 맨 앞에 한 번만)"""
-    description = f"""{COUPANG_NOTICE}\n\n🌅 출근길 개미들을 위한 3분 증시 브리핑!\n\n💥 오늘의 핫이슈 '{keyword}'를 유머와 함께 쉽게 풀어드려요\n🎯 회사에서 써먹을 경제 개그까지 덤으로!\n\n⏰ 매일 아침 7시 업데이트\n📱 90초 안에 끝나는 알찬 정보\n\n▶️ 이런 분들께 딱!\n• 출근길 지하철에서 볼 재미있는 경제뉴스\n• 점심시간 동료들과 나눌 증시 개그  \n• 복잡한 뉴스를 쉽게 이해하고 싶은 분\n• 매일 아침 투자 동기부여가 필요한 분\n\n💪 오늘도 힘내서 투자하세요!\n\n👍 구독&좋아요는 더 좋은 콘텐츠의 힘!\n📢 친구들과 공유해서 함께 부자 되어요!\n\n⚠️ 투자 판단은 본인 책임, 재미로만 봐주세요!\n\n#출근길브리핑 #증시유머 #개미투자자 #경제뉴스 #투자개그 #주식밈 #월급쟁이투자 #아침뉴스 #경제패러디 #AI분석"""
+    description = f"""{COUPANG_NOTICE}\n\n🌅 출근길 개미들을 위한 90초 증시 브리핑!\n\n💥 오늘의 핫이슈 '{keyword}'를 유머와 함께 쉽게 풀어드려요\n🎯 회사에서 써먹을 경제 개그까지 덤으로!\n\n⏰ 매일 아침 7시 업데이트\n📱 90초 안에 끝나는 알찬 정보\n\n▶️ 이런 분들께 딱!\n• 출근길 지하철에서 볼 재미있는 경제뉴스\n• 점심시간 동료들과 나눌 증시 개그  \n• 복잡한 뉴스를 쉽게 이해하고 싶은 분\n• 매일 아침 투자 동기부여가 필요한 분\n\n💪 오늘도 힘내서 투자하세요!\n\n👍 구독&좋아요는 더 좋은 콘텐츠의 힘!\n📢 친구들과 공유해서 함께 부자 되어요!\n\n⚠️ 투자 판단은 본인 책임, 재미로만 봐주세요!\n\n#출근길브리핑 #증시유머 #개미투자자 #경제뉴스 #투자개그 #주식밈 #월급쟁이투자 #아침뉴스 #경제패러디 #AI분석"""
     return description
 
 def get_news_based_tags(keyword):
@@ -112,7 +112,7 @@ def upload_video(file_path, title, description, tags):
             'categoryId': '24'  # 'Entertainment' 카테고리
         },
         'status': {
-            'privacyStatus': 'public'  # 조회수 증가를 위해 public으로 설정
+            'privacyStatus': 'unlisted'  # 목록 비공개(unlisted)로 설정
         }
     }
     try:
