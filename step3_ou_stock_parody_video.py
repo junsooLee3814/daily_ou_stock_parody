@@ -17,6 +17,7 @@ import shutil
 import re
 import time
 from common_utils import get_today_kst
+import sys
 
 def parse_rawdata(file_path='asset/rawdata.txt'):
     """rawdata.txt 파일을 파싱하여 설정값을 딕셔너리로 반환합니다."""
@@ -48,13 +49,17 @@ print("--- 패러디 카드 동영상 제작 시작 ---")
 raw_config = parse_rawdata()
 card_duration_str = raw_config.get('동영상길이', '카드뉴스별 동영상 길이 : 4초')
 try:
-    card_duration_val = int(re.search(r'\d+', card_duration_str).group())
+    match = re.search(r'\d+', card_duration_str)
+    if match:
+        card_duration_val = int(match.group())
+    else:
+        card_duration_val = 4
 except (AttributeError, ValueError):
     card_duration_val = 4
 
 # --- 설정 ---
 CARD_DURATION = card_duration_val  # 각 카드 이미지의 노출 시간 (초)
-INTRO_DURATION = 2 # 인트로 이미지의 노출 시간 (초)
+INTRO_DURATION = 4 # 인트로 이미지의 노출 시간 (초)
 WIDTH, HEIGHT = 1080, 1920 # 동영상 해상도
 
 # --- 경로 설정 ---
@@ -76,6 +81,18 @@ FINAL_VIDEO_PATH = os.path.join(VIDEO_OUT_DIR, f'ou_stock_parody_final_{now_str}
 os.makedirs(VIDEO_OUT_DIR, exist_ok=True)
 os.makedirs(SINGLE_CLIP_DIR, exist_ok=True)
 
+# asset 리소스 체크
+asset_files = [INTRO_IMG_PATH, BGM_PATH]
+for af in asset_files:
+    if not os.path.exists(af):
+        print(f"[경고] 리소스 파일 누락: {af}")
+
+# parody_card 폴더에 이미지가 없을 때 안내
+card_images = sorted(glob.glob(os.path.join(CARD_IMG_DIR, '*.png')))
+if not card_images:
+    print("[경고] 'parody_card' 폴더에 카드 이미지 파일이 없습니다. 동영상 제작을 건너뜁니다.")
+    sys.exit(0)
+
 def create_intro_video(img_path, out_path, duration):
     """인트로 이미지를 사용하여 줌 효과가 적용된 비디오 클립을 생성합니다."""
     if not os.path.exists(img_path):
@@ -94,7 +111,7 @@ def create_intro_video(img_path, out_path, duration):
         print(f"   - 인트로 영상 저장 완료: {out_path}")
         return out_path
     except subprocess.CalledProcessError as e:
-        print(f"[오류] 인트로 영상 제작 실패: {e.stderr}")
+        print(f"[오류] 인트로 영상 제작 실패(FFmpeg 문제 가능): {e.stderr}")
         return None
 
 def create_card_videos(card_img_paths, duration):
@@ -116,7 +133,7 @@ def create_card_videos(card_img_paths, duration):
             print(f"   - 카드 영상 ({idx+1}/{total_cards}) 저장 완료: {out_path}")
             video_clips.append(out_path)
         except subprocess.CalledProcessError as e:
-            print(f"[오류] 카드 영상({idx+1}) 제작 실패: {e.stderr}")
+            print(f"[오류] 카드 영상({idx+1}) 제작 실패(FFmpeg 문제 가능): {e.stderr}")
             continue
     return video_clips
 
@@ -170,42 +187,50 @@ def cleanup(temp_dirs, temp_files):
     time.sleep(1) # 파일 핸들이 해제될 때까지 잠시 대기
     for d in temp_dirs:
         if os.path.exists(d):
-            shutil.rmtree(d)
-            print(f"   - 임시 폴더 삭제: {d}")
+            for i in range(3):
+                try:
+                    shutil.rmtree(d)
+                    print(f"   - 임시 폴더 삭제: {d}")
+                    break
+                except PermissionError:
+                    print(f"[경고] 폴더 사용 중이거나 권한이 없어 삭제 실패: {d} (재시도 {i+1}/3)")
+                    time.sleep(1)
+                except Exception as e:
+                    print(f"[경고] 임시 폴더 삭제 중 예외 발생: {d} ({e}) (재시도 {i+1}/3)")
+                    time.sleep(1)
+            else:
+                print(f"[실패] 폴더 삭제 불가: {d} (수동 삭제 필요)")
     for f in temp_files:
         if os.path.exists(f):
-            os.remove(f)
-            print(f"   - 임시 파일 삭제: {f}")
+            try:
+                os.remove(f)
+                print(f"   - 임시 파일 삭제: {f}")
+            except Exception as e:
+                print(f"[경고] 임시 파일 삭제 중 예외 발생: {f} ({e}) (수동 삭제 필요)")
 
 if __name__ == "__main__":
-    # parody_card 폴더에서 이미지 목록 가져오기 (이름순 정렬)
-    card_images = sorted(glob.glob(os.path.join(CARD_IMG_DIR, '*.png')))
+    # 1. 인트로 영상 생성
+    intro_clip = create_intro_video(INTRO_IMG_PATH, INTRO_CLIP_PATH, INTRO_DURATION)
     
-    if not card_images:
-        print("[오류] 'parody_card' 폴더에 이미지 파일이 없습니다. 스크립트를 종료합니다.")
+    # 2. 카드 영상 생성
+    card_clips = create_card_videos(card_images, CARD_DURATION)
+    
+    # 3. 모든 클립 목록 결합 (인트로 + 카드)
+    all_clips = ([intro_clip] if intro_clip else []) + card_clips
+    
+    if all_clips:
+        # 4. 클립 합치기
+        merge_videos(all_clips, MERGED_CLIP_PATH)
+        
+        # 5. BGM 추가
+        total_video_duration = (INTRO_DURATION if intro_clip else 0) + (len(card_clips) * CARD_DURATION)
+        add_background_music(MERGED_CLIP_PATH, BGM_PATH, FINAL_VIDEO_PATH, total_video_duration)
+        
+        # 6. 임시 파일 정리
+        cleanup(
+            temp_dirs=[SINGLE_CLIP_DIR],
+            temp_files=[MERGED_CLIP_PATH]
+        )
+        print(f"\n모든 작업 완료! 최종 영상은 다음 경로에 저장되었습니다:\n{FINAL_VIDEO_PATH}")
     else:
-        # 1. 인트로 영상 생성
-        intro_clip = create_intro_video(INTRO_IMG_PATH, INTRO_CLIP_PATH, INTRO_DURATION)
-        
-        # 2. 카드 영상 생성
-        card_clips = create_card_videos(card_images, CARD_DURATION)
-        
-        # 3. 모든 클립 목록 결합 (인트로 + 카드)
-        all_clips = ([intro_clip] if intro_clip else []) + card_clips
-        
-        if all_clips:
-            # 4. 클립 합치기
-            merge_videos(all_clips, MERGED_CLIP_PATH)
-            
-            # 5. BGM 추가
-            total_video_duration = (INTRO_DURATION if intro_clip else 0) + (len(card_clips) * CARD_DURATION)
-            add_background_music(MERGED_CLIP_PATH, BGM_PATH, FINAL_VIDEO_PATH, total_video_duration)
-            
-            # 6. 임시 파일 정리
-            cleanup(
-                temp_dirs=[SINGLE_CLIP_DIR],
-                temp_files=[MERGED_CLIP_PATH]
-            )
-            print(f"\n🎉 모든 작업 완료! 최종 영상은 다음 경로에 저장되었습니다:\n{FINAL_VIDEO_PATH}")
-        else:
-            print("[오류] 생성된 영상 클립이 없어 동영상 제작을 중단합니다.") 
+        print("[오류] 생성된 영상 클립이 없어 동영상 제작을 중단합니다.") 

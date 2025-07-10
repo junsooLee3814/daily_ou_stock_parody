@@ -26,6 +26,8 @@ def run_script(script_name):
 
         # 실시간으로 출력 스트리밍
         while True:
+            if process.stdout is None:
+                break
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
                 break
@@ -33,10 +35,11 @@ def run_script(script_name):
                 print(output.strip())
 
         # 프로세스 종료 후, 남은 stderr 출력
-        stderr_output = process.stderr.read()
-        if stderr_output:
-            print("--- [오류 출력] ---")
-            print(stderr_output.strip())
+        if process.stderr is not None:
+            stderr_output = process.stderr.read()
+            if stderr_output:
+                print("--- [오류 출력] ---")
+                print(stderr_output.strip())
 
         if process.returncode != 0:
             print(f"--- [실패] {script_name} (종료 코드: {process.returncode}) ---")
@@ -71,17 +74,27 @@ def main():
         "step3_ou_stock_parody_video.py"
     ]
     
+    all_success = True
     for script in scripts_to_run:
         print("\n" + "="*50)
+        if not os.path.exists(script):
+            print(f"[오류] 실행 파일 없음: {script}")
+            all_success = False
+            break
         success = run_script(script)
         if not success:
             print(f"\n[파이프라인 중단] '{script}' 실행에 실패하여 이후 단계를 중단합니다.")
+            all_success = False
             break
     
     end_time = get_today_kst()
     print("\n" + "="*50)
     print(f"=== O_U Stock Parody 자동 생성 파이프라인 종료 ({end_time.strftime('%Y-%m-%d %H:%M:%S')}) ===")
     print(f"총 소요 시간: {end_time - start_time}")
+    if all_success:
+        print("[최종 결과] 전체 파이프라인이 성공적으로 완료되었습니다!")
+    else:
+        print("[최종 결과] 파이프라인 실행 중 오류가 발생했습니다. 위 로그를 확인하세요.")
 
 if __name__ == "__main__":
     main() 
