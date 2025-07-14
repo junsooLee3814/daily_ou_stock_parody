@@ -49,15 +49,12 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # Git LFS로 동영상 파일 추적 설정
-          git lfs track "parody_video/*.mp4"
-          git add .gitattributes
-          
-          # 생성된 동영상과 카드뉴스 이미지 추가
-          git add parody_video/*.mp4
+          # 동영상 파일은 LFS 및 git에 추가하지 않음
+          # git lfs track "parody_video/*.mp4"
+          # git add .gitattributes
+          # git add parody_video/*.mp4
           git add parody_card/*.png
           
-          # 변경사항이 있을 경우에만 커밋 및 푸시
           if git diff --staged --quiet; then
             echo "✅ 변경사항이 없습니다. 커밋을 건너뜁니다."
           else

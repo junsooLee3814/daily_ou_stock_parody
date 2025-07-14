@@ -10,10 +10,8 @@ jobs:
   upload_to_youtube:
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Checkout repository with LFS
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: 🐍 Set up Python
         uses: actions/setup-python@v4
@@ -42,4 +40,8 @@ jobs:
         run: cat youtube_uploader/token.json
 
       - name: 🚀 Upload to YouTube
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          SHEET_NAME: ${{ secrets.SHEET_NAME }}
+          COUPANG_NOTICE: ${{ secrets.COUPANG_NOTICE }}
         run: python youtube_uploader/upload_to_youtube.py

@@ -214,7 +214,7 @@ if __name__ == "__main__":
     # 1. 인트로 영상 생성 (앞)
     intro_clip = create_intro_video(INTRO_IMG_PATH, INTRO_CLIP_PATH, INTRO_DURATION)
     # 1-2. 엔딩 인트로 영상 생성 (뒤)
-    outro_clip = create_intro_video(INTRO_IMG_PATH, OUTRO_CLIP_PATH, OUTRO_DURATION)
+    outro_clip = create_intro_video(INTRO_IMG_PATH, OUTRO_CLIP_PATH, INTRO_DURATION)  # 엔딩도 4초로 고정
     
     # 2. 카드 영상 생성
     card_clips = create_card_videos(card_images, CARD_DURATION)
@@ -227,7 +227,7 @@ if __name__ == "__main__":
         merge_videos(all_clips, MERGED_CLIP_PATH)
         
         # 5. BGM 추가 (총 길이: 인트로+카드+엔딩인트로)
-        total_video_duration = (INTRO_DURATION if intro_clip else 0) + (len(card_clips) * CARD_DURATION) + (OUTRO_DURATION if outro_clip else 0)
+        total_video_duration = (INTRO_DURATION if intro_clip else 0) + (len(card_clips) * CARD_DURATION) + (INTRO_DURATION if outro_clip else 0)
         add_background_music(MERGED_CLIP_PATH, BGM_PATH, FINAL_VIDEO_PATH, total_video_duration)
         
         # 6. 임시 파일 정리
