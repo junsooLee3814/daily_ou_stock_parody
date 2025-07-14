@@ -60,6 +60,7 @@ except (AttributeError, ValueError):
 # --- 설정 ---
 CARD_DURATION = card_duration_val  # 각 카드 이미지의 노출 시간 (초)
 INTRO_DURATION = 4 # 인트로 이미지의 노출 시간 (초)
+OUTRO_DURATION = 5 # 엔딩 인트로 이미지의 노출 시간 (초)
 WIDTH, HEIGHT = 1080, 1920 # 동영상 해상도
 
 # --- 경로 설정 ---
@@ -74,6 +75,7 @@ INTRO_IMG_PATH = os.path.join(BASE_DIR, 'asset', 'intro_OU_stock.jpg')
 BGM_PATH = os.path.join(BASE_DIR, 'asset', 'bgm.mp3')
 
 INTRO_CLIP_PATH = os.path.join(SINGLE_CLIP_DIR, f'intro_clip_{now_str}.mp4')
+OUTRO_CLIP_PATH = os.path.join(SINGLE_CLIP_DIR, f'outro_clip_{now_str}.mp4')
 MERGED_CLIP_PATH = os.path.join(VIDEO_OUT_DIR, f'merged_parody_{now_str}.mp4')
 FINAL_VIDEO_PATH = os.path.join(VIDEO_OUT_DIR, f'ou_stock_parody_final_{now_str}.mp4')
 
@@ -209,21 +211,23 @@ def cleanup(temp_dirs, temp_files):
                 print(f"[경고] 임시 파일 삭제 중 예외 발생: {f} ({e}) (수동 삭제 필요)")
 
 if __name__ == "__main__":
-    # 1. 인트로 영상 생성
+    # 1. 인트로 영상 생성 (앞)
     intro_clip = create_intro_video(INTRO_IMG_PATH, INTRO_CLIP_PATH, INTRO_DURATION)
+    # 1-2. 엔딩 인트로 영상 생성 (뒤)
+    outro_clip = create_intro_video(INTRO_IMG_PATH, OUTRO_CLIP_PATH, OUTRO_DURATION)
     
     # 2. 카드 영상 생성
     card_clips = create_card_videos(card_images, CARD_DURATION)
     
-    # 3. 모든 클립 목록 결합 (인트로 + 카드)
-    all_clips = ([intro_clip] if intro_clip else []) + card_clips
+    # 3. 모든 클립 목록 결합 (인트로 + 카드 + 엔딩인트로)
+    all_clips = ([intro_clip] if intro_clip else []) + card_clips + ([outro_clip] if outro_clip else [])
     
     if all_clips:
         # 4. 클립 합치기
         merge_videos(all_clips, MERGED_CLIP_PATH)
         
-        # 5. BGM 추가
-        total_video_duration = (INTRO_DURATION if intro_clip else 0) + (len(card_clips) * CARD_DURATION)
+        # 5. BGM 추가 (총 길이: 인트로+카드+엔딩인트로)
+        total_video_duration = (INTRO_DURATION if intro_clip else 0) + (len(card_clips) * CARD_DURATION) + (OUTRO_DURATION if outro_clip else 0)
         add_background_music(MERGED_CLIP_PATH, BGM_PATH, FINAL_VIDEO_PATH, total_video_duration)
         
         # 6. 임시 파일 정리
