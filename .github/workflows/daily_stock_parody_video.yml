@@ -1,0 +1,64 @@
+# .github/workflows/daily_parody_video.yml
+
+name: OU Stock Parody Video Generation
+
+on:
+  schedule:
+    # 매일 오전 6시 KST (전날 21:00 UTC)에 실행
+    - cron: '0 21 * * *'
+  # 수동 실행을 위한 workflow_dispatch 추가
+  workflow_dispatch:
+
+jobs:
+  generate_parody_video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: ⚡️ Git LFS 설정
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-lfs
+          git lfs install
+
+      - name: 🐍 Python 환경 설정
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9' # 또는 프로젝트에 맞는 Python 버전
+
+      - name: 🎬 FFmpeg 설치 (동영상 제작용)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: 🐍 Python 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 🎯 주식 패러디 동영상 생성 실행
+        # GitHub Secrets를 스크립트가 읽을 수 있도록 환경 변수로 직접 주입합니다.
+        # .env 나 json 파일을 별도로 만들 필요가 없어졌습니다.
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        run: |
+          python step4_ou_stock_parody_final.py
+
+      - name: 📤 생성된 파일 커밋 및 푸시
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # 동영상 파일은 LFS 및 git에 추가하지 않음
+          # git lfs track "parody_video/*.mp4"
+          # git add .gitattributes
+          # git add parody_video/*.mp4
+          git add parody_card/*.png
+          
+          if git diff --staged --quiet; then
+            echo "✅ 변경사항이 없습니다. 커밋을 건너뜁니다."
+          else
+            echo "🚀 변경사항을 커밋하고 푸시합니다."
+            git commit -m "🎬 자동 생성: $(date '+%Y-%m-%d') 주식 패러디 동영상"
+            git push
+          fi
