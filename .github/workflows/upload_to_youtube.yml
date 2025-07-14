@@ -40,8 +40,4 @@ jobs:
         run: cat youtube_uploader/token.json
 
       - name: 🚀 Upload to YouTube
-        env:
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-          SHEET_NAME: ${{ secrets.SHEET_NAME }}
-          COUPANG_NOTICE: ${{ secrets.COUPANG_NOTICE }}
         run: python youtube_uploader/upload_to_youtube.py
