@@ -10,15 +10,21 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from common_utils import get_today_kst, get_gsheet
+from dotenv import load_dotenv
+load_dotenv()
+
+print("[진단] SPREADSHEET_ID:", os.environ.get('SPREADSHEET_ID'))
+print("[진단] COUPANG_NOTICE:", os.environ.get('COUPANG_NOTICE'))
+print("[진단] CLAUDE_API_KEY:", os.environ.get('CLAUDE_API_KEY'))
 
 # 환경변수에서 민감 정보 및 설정값을 읽어옴
-SHEET_NAME = os.environ.get('SHEET_NAME')
+SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID')
 COUPANG_NOTICE = os.environ.get('COUPANG_NOTICE')
 CLAUDE_API_KEY = os.environ.get('CLAUDE_API_KEY')
 
 # 환경변수 체크
-if not SHEET_NAME:
-    print("[환경설정오류] SHEET_NAME 환경변수가 필요합니다.")
+if not SPREADSHEET_ID:
+    print("[환경설정오류] SPREADSHEET_ID 환경변수가 필요합니다.")
     sys.exit(1)
 if not COUPANG_NOTICE:
     print("[환경설정오류] COUPANG_NOTICE 환경변수가 필요합니다.")
@@ -32,10 +38,27 @@ SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 
 def get_today_rows_from_sheet():
-    sheet = get_gsheet(SHEET_NAME)
-    today = get_today_kst().strftime('%Y-%m-%d')
-    records = sheet.get_all_records()
-    return [row for row in records if str(row.get('date', '')) == today]
+    import gspread
+    from oauth2client.service_account import ServiceAccountCredentials
+    scope = 'https://spreadsheets.google.com/feeds https://www.googleapis.com/auth/drive'
+    creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+    client = gspread.authorize(creds)  # type: ignore
+    spreadsheet_id = os.environ.get('SPREADSHEET_ID')
+    if not spreadsheet_id:
+        raise ValueError("SPREADSHEET_ID 환경변수가 없습니다.")
+    spreadsheet = client.open_by_key(str(spreadsheet_id))
+    worksheet_titles = [ws.title for ws in spreadsheet.worksheets()]
+    print("[진단] 워크시트 목록:", worksheet_titles)
+    try:
+        sheet = get_gsheet(spreadsheet_id, worksheet_name='today_stock_parody')
+        records = sheet.get_all_records()
+        print(f"[진단] today_stock_parody 시트 데이터 개수: {len(records)}")
+        if len(records) > 0:
+            print("[진단] 첫 번째 row:", records[0])
+        return records
+    except Exception as e:
+        print("[진단] 워크시트 today_stock_parody 접근 실패:", e)
+        raise
 
 def ask_claude_best_row(rows, api_key):
     # 20개 row를 요약해서 클로드에게 가장 임팩트 있는 row index를 추천받음
@@ -136,7 +159,7 @@ def upload_video(file_path, title, description, tags):
             'categoryId': '24'  # 'Entertainment' 카테고리
         },
         'status': {
-            'privacyStatus': 'unlisted'  # 목록 비공개(unlisted)로 설정
+            'privacyStatus': 'private'  # 비공개로 설정
         }
     }
     try:
@@ -162,6 +185,7 @@ def upload_video(file_path, title, description, tags):
 if __name__ == '__main__':
     print("🔍 구글시트에서 오늘의 패러디 데이터 20개를 불러옵니다...")
     rows = get_today_rows_from_sheet()
+    print(f"[진단] get_today_rows_from_sheet() 반환 rows 개수: {len(rows)}")
     if not rows:
         print("오늘 날짜의 데이터가 없습니다.")
         sys.exit(1)

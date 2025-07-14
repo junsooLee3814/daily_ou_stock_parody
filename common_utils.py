@@ -9,13 +9,10 @@ from zoneinfo import ZoneInfo
 # .env 파일에서 환경 변수를 로드
 load_dotenv()
 
-def get_gsheet(sheet_name):
-    """구글 시트와 연결하여 워크시트 객체를 반환합니다."""
+def get_gsheet(sheet_id, worksheet_name=None):
+    """구글 시트와 연결하여 워크시트 객체를 반환합니다. sheet_id는 구글 시트의 ID, worksheet_name은 탭 이름입니다."""
     
-    scope = [
-        'https://spreadsheets.google.com/feeds',
-        'https://www.googleapis.com/auth/drive'
-    ]
+    scope = 'https://spreadsheets.google.com/feeds https://www.googleapis.com/auth/drive'
 
     creds = None
     # GitHub Actions Secret에 저장된 환경 변수를 우선적으로 확인
@@ -33,8 +30,11 @@ def get_gsheet(sheet_name):
                  raise FileNotFoundError(f"로컬 실행을 위한 '{credentials_path}' 파일을 찾을 수 없습니다.")
             creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
         
-        client = gspread.authorize(creds)
-        sheet = client.open(sheet_name).sheet1
+        client = gspread.authorize(creds)  # type: ignore
+        if worksheet_name:
+            sheet = client.open_by_key(sheet_id).worksheet(worksheet_name)
+        else:
+            sheet = client.open_by_key(sheet_id).sheet1
         return sheet
 
     except FileNotFoundError as e:
