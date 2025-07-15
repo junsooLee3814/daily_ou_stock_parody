@@ -94,7 +94,7 @@ def upload_video(file_path, title, description, tags, max_retries=3):
     retry = 0
     response = None
     error = None
-    print(f"🚀 증권권뉴스 패러디 업로드를 시작합니다... (파일: {file_path})")
+    print(f"🚀 증권뉴스 패러디 업로드를 시작합니다... (파일: {file_path})")
     while response is None:
         try:
             status, response = request.next_chunk()
