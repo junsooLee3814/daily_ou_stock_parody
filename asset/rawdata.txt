@@ -12,4 +12,4 @@
 
 [RSS_URL 지정]
 https://www.yna.co.kr/rss/market.xml
-https://www.mk.co.kr/rss/50200011/
+

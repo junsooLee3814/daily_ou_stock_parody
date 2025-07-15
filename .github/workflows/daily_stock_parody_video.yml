@@ -58,10 +58,10 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # 동영상 파일은 LFS 및 git에 추가하지 않음
-          # git lfs track "parody_video/*.mp4"
-          # git add .gitattributes
-          # git add parody_video/*.mp4
+          # 동영상 파일은 LFS 및 git에 추가
+          git lfs track "parody_video/*.mp4"
+          git add .gitattributes
+          git add parody_video/*.mp4
           git add parody_card/*.png
           
           if git diff --staged --quiet; then

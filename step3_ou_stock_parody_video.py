@@ -238,14 +238,15 @@ if __name__ == "__main__":
             temp_dirs=[SINGLE_CLIP_DIR],
             temp_files=[MERGED_CLIP_PATH]
         )
-        # 7. parody_video 폴더 내 최종 동영상(FINAL_VIDEO_PATH)을 제외한 mp4 파일 삭제
-        for f in glob.glob(os.path.join(VIDEO_OUT_DIR, '*.mp4')):
-            if os.path.abspath(f) != os.path.abspath(FINAL_VIDEO_PATH):
-                try:
-                    os.remove(f)
-                    print(f"[정리] 업로드 후 파일 삭제: {f}")
-                except Exception as e:
-                    print(f"[경고] 파일 삭제 실패: {f} ({e})")
+        # 7. parody_video 폴더 내 최신 동영상 1개를 제외한 mp4 파일 삭제
+        mp4_files = glob.glob(os.path.join(VIDEO_OUT_DIR, '*.mp4'))
+        mp4_files_sorted = sorted(mp4_files, key=os.path.getmtime, reverse=True)
+        for f in mp4_files_sorted[1:]:
+            try:
+                os.remove(f)
+                print(f"[정리] 업로드 후 파일 삭제: {f}")
+            except Exception as e:
+                print(f"[경고] 파일 삭제 실패: {f} ({e})")
         print(f"\n모든 작업 완료! 최종 영상은 다음 경로에 저장되었습니다:\n{FINAL_VIDEO_PATH}")
     else:
         print("[오류] 생성된 영상 클립이 없어 동영상 제작을 중단합니다.") 

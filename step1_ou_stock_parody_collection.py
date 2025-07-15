@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from anthropic import Anthropic
 from dotenv import load_dotenv
 from common_utils import get_gsheet, get_today_kst
-from difflib import SequenceMatcher
 import json
 import re
 from pathlib import Path
@@ -54,56 +53,68 @@ SHEET_ID = os.getenv('GSHEET_ID')
 if not SHEET_ID:
     raise ValueError("GSHEET_ID 환경 변수가 설정되지 않았습니다.")
 
-def is_similar(str1, str2, threshold=0.8):
-    """두 문자열의 유사도를 계산하여 중복 여부 판단"""
-    return SequenceMatcher(None, str1, str2).ratio() > threshold
-
-def is_duplicate_news(news_item, existing_news):
-    """뉴스 중복 여부 확인"""
-    for existing in existing_news:
-        if is_similar(news_item['title'], existing['title']):
-            return True
-    return False
-
-def fetch_news(rss_url, existing_news=None):
-    """RSS 피드에서 오늘과 어제 날짜의 뉴스를 가져오는 함수"""
-    if existing_news is None:
-        existing_news = []
-    
+def fetch_news(rss_url, days=7, min_news=20):
+    """RSS 피드에서 최근 days(기본 7일) 내 뉴스를 가져오고, published_parsed가 없으면 published/updated 등 다른 필드도 활용. 뉴스가 없으면 날짜 필터 없이 전체 수집."""
     feed = feedparser.parse(rss_url)
     news_list = []
-    today = get_today_kst()
-    yesterday = today - timedelta(days=1)
-    
+    today = get_today_kst().astimezone(KST).date()
+    start_date = today - timedelta(days=days-1)
+    print(f"[디버그] feed.entries 개수: {len(feed.entries)}")
+    filtered_count = 0
     for entry in feed.entries:
         published_date = None
+        # published_parsed 우선, 없으면 published/updated 등에서 날짜 추출
         if hasattr(entry, 'published_parsed') and isinstance(entry.published_parsed, time.struct_time):
-            published_date = datetime.fromtimestamp(time.mktime(entry.published_parsed)).date()
-        # 오늘 또는 어제 뉴스가 아니면 건너뜀
-        if not published_date or published_date not in [today, yesterday]:
-            continue
-        
-        title = entry.title
-        summary = entry.summary if hasattr(entry, 'summary') else ''
-        # 날짜 형식은 YYYY-MM-DD로 통일
-        if published_date:
-            published = published_date.strftime('%Y-%m-%d')
-        else:
-            published = ''
-        link = entry.link if hasattr(entry, 'link') else ''
-        
-        news_item = {
-            'title': title,
-            'summary': summary,
-            'published': published,
-            'link': link
-        }
-        
-        # 중복 체크
-        if not is_duplicate_news(news_item, existing_news):
+            published_dt = datetime.fromtimestamp(time.mktime(entry.published_parsed), tz=KST)
+            published_date = published_dt.date()
+        elif hasattr(entry, 'published') and isinstance(entry.published, str):
+            try:
+                published_dt = datetime.strptime(entry.published[:10], '%Y-%m-%d')
+                published_date = published_dt.date()
+            except Exception:
+                published_date = None
+        elif hasattr(entry, 'updated_parsed') and isinstance(entry.updated_parsed, time.struct_time):
+            published_dt = datetime.fromtimestamp(time.mktime(entry.updated_parsed), tz=KST)
+            published_date = published_dt.date()
+        # 디버깅: 실제 날짜 값 출력
+        print(f"[디버그] published_date: {published_date}, start_date: {start_date}, today: {today}")
+        if published_date and (start_date <= published_date <= today):
+            title = entry.title
+            summary = entry.summary if hasattr(entry, 'summary') else ''
+            published = published_date.strftime('%Y-%m-%d') if published_date else ''
+            link = entry.link if hasattr(entry, 'link') else ''
+            news_item = {
+                'title': title,
+                'summary': summary,
+                'published': published,
+                'link': link
+            }
             news_list.append(news_item)
-            existing_news.append(news_item)
-    
+        else:
+            filtered_count += 1
+    print(f"[디버그] 날짜 필터 통과 뉴스: {len(news_list)}, 필터링된 뉴스: {filtered_count}")
+    # 만약 뉴스가 너무 적으면 날짜 필터 없이 전체 수집
+    if len(news_list) < min_news:
+        print("[경고] 날짜 필터로 충분한 뉴스를 수집하지 못했습니다. 날짜 필터 없이 전체 수집을 시도합니다.")
+        news_list = []
+        for entry in feed.entries:
+            title = entry.title
+            summary = entry.summary if hasattr(entry, 'summary') else ''
+            published = ''
+            if hasattr(entry, 'published_parsed') and isinstance(entry.published_parsed, time.struct_time):
+                published_dt = datetime.fromtimestamp(time.mktime(entry.published_parsed), tz=KST)
+                published = published_dt.strftime('%Y-%m-%d')
+            elif hasattr(entry, 'published') and isinstance(entry.published, str):
+                published = entry.published[:10]
+            link = entry.link if hasattr(entry, 'link') else ''
+            news_item = {
+                'title': title,
+                'summary': summary,
+                'published': published,
+                'link': link
+            }
+            news_list.append(news_item)
+        print(f"[디버그] 날짜 무시 전체 수집 뉴스: {len(news_list)}")
     return news_list
 
 def rank_news_by_importance_with_claude(news_list):
@@ -145,7 +156,7 @@ def rank_news_by_importance_with_claude(news_list):
 """
 
     response = client.messages.create(
-        model="claude-3-5-sonnet-20240620",
+        model="claude-3-haiku-20240307",
         max_tokens=1000,
         temperature=0.1,
         system="",
@@ -200,7 +211,7 @@ def create_parody_with_claude(news_content, original_prompt, existing_titles, re
         messages.append(MessageParam(role="user", content=user_message))
 
     response = client.messages.create(
-        model="claude-3-5-sonnet-20240620",
+        model="claude-3-haiku-20240307",
         max_tokens=2000,
         temperature=0.7,
         system="",
@@ -238,68 +249,37 @@ def save_to_gsheet(parody_data_list):
         sheet.append_row(row)
 
 def main():
-    print("[1/5] 뉴스 소스별 중요도 순으로 뉴스 선별 중...")
-    
-    # 설정 파일 로드
+    print("[1/5] 한경 증권뉴스만 중요도 순으로 뉴스 선별 중...")
     raw_config = parse_rawdata()
     if not raw_config:
         print("[오류] 설정 파일(asset/rawdata.txt)을 읽을 수 없습니다. 프로그램을 종료합니다.")
         return
-
-    # RSS 피드 URL 설정
     rss_urls = raw_config.get('RSS_URL 지정', [])
-    if isinstance(rss_urls, str): # 값이 하나일 경우 문자열일 수 있음
+    if isinstance(rss_urls, str):
         rss_urls = [rss_urls]
-
     if not rss_urls:
         print("[오류] asset/rawdata.txt 파일에서 'RSS_URL 지정'을 찾을 수 없습니다.")
         return
-        
-    RSS_FEEDS = {}
-    for url in rss_urls:
-        if 'mk.co.kr' in url:
-            RSS_FEEDS["매일경제_증권"] = url
-        elif 'yna.co.kr' in url:
-            RSS_FEEDS["연합뉴스_증권"] = url
-
-    # 1. 각 소스별로 뉴스 후보군 생성
-    all_news = []
-    for source, url in RSS_FEEDS.items():
-        print(f"\n  -> '{source}' 뉴스 수집 중...")
-        news_from_source = fetch_news(url)
-        if not news_from_source:
-            print("    - 오늘/어제 뉴스가 없어 후보군을 생성할 수 없습니다.")
-            continue
-        print(f"    - 오늘/어제 뉴스 {len(news_from_source)}건 수집 완료.")
-        all_news.extend(news_from_source)
-
+    rss_url = rss_urls[0]  # 한경 증권뉴스만 사용
+    all_news = fetch_news(rss_url)
     if not all_news:
-        print("\n[오류] 모든 소스에서 뉴스를 가져오지 못했습니다. 프로그램을 종료합니다.")
+        print("\n[오류] 한경 증권뉴스에서 뉴스를 가져오지 못했습니다. 프로그램을 종료합니다.")
         return
-
     print(f"\n[2/5] Claude 3.5가 독자들이 가장 관심을 가질 만한 뉴스 20개를 직접 선정합니다...")
-    # Claude 3.5가 전체 뉴스 중에서 독자들이 많이 읽을 수 있고, 관심을 가질 만한 뉴스를 20개 선정
     ranked_news = rank_news_by_importance_with_claude(all_news)
     top_news = ranked_news[:20]
-
     print(f"\n[2.5/5] 총 {len(top_news)}개 뉴스 선별 완료! 패러디 생성을 시작합니다.")
-
     print(f"\n[3/5] 중요도 상위 {len(top_news)}개 뉴스로 패러디 생성 중...")
     parody_data_list = []
-
-    # 한국 시간 기준으로 오늘 날짜를 한 번만 계산
     today_str = get_today_kst().strftime('%Y-%m-%d')
-    existing_parody_titles = [] # 생성된 패러디 제목을 저장할 리스트
+    existing_parody_titles = []
     for i, news in enumerate(top_news):
         news_content = f"제목: {news['title']}\n내용: {news['summary']}\n링크: {news['link']}"
-        
-        # 프롬프트에 사용될 변수들을 미리 준비하여 f-string 오류 방지
-        current_date = today_str # 한국 시간대 기준으로 생성된 날짜 사용
+        current_date = today_str
         original_title_safe = news['title'].replace('"', "'")
         news_link = news['link']
         news_title = news['title']
         news_summary = news['summary']
-
         parody_prompt = f"""
 당신은 조회수 급상승을 목표로 하는 증권 뉴스 패러디 전문가입니다.
 
@@ -358,56 +338,42 @@ def main():
 
 위 구조와 지침을 엄격히 따라, 입력 뉴스(제목/요약/링크)를 기반으로 카드뉴스 패러디 콘텐츠를 생성하라.
 """
-
         print(f"  - [{i+1}/{len(top_news)}] 패러디 생성 중...")
-        
         response_text = ""
         error = None
-        
         for attempt in range(2):
             try:
                 retry_context = None
                 if attempt > 0:
                     retry_context = {"malformed_json": response_text, "error_message": str(error)}
-                
                 parody_result_blocks = create_parody_with_claude(
                     news_content, parody_prompt, existing_parody_titles, retry_context
                 )
-                
-                # anthropic 라이브러리의 응답 객체 구조에 따라 안전하게 접근
                 response_block = parody_result_blocks[0]
                 response_text = getattr(response_block, 'text', None) or getattr(response_block, 'content', None) or str(response_block)
-                
                 json_match = re.search(r'```json\n(\{.*?\})\n```', response_text, re.DOTALL)
                 if not json_match:
-                    # JSON 객체가 ```json ... ``` 블록 없이 바로 오는 경우 처리
-                    # 응답의 시작이 '{'이고 끝이 '}'인 가장 큰 JSON 블록을 찾음
                     start_index = response_text.find('{')
                     end_index = response_text.rfind('}')
                     if start_index != -1 and end_index != -1 and start_index < end_index:
                         json_text = response_text[start_index:end_index+1]
                     else:
-                        json_text = response_text # Fallback
+                        json_text = response_text
                 else:
                     json_text = json_match.group(1)
-
                 parody_data = json.loads(json_text)
-                
                 parody_data_list.append(parody_data)
-                existing_parody_titles.append(parody_data['parody_title']) # 생성된 제목을 목록에 추가
+                existing_parody_titles.append(parody_data['parody_title'])
                 print("    - 성공!")
                 break
-            
             except Exception as e:
                 error = e
                 print(f"    ! 파싱 실패 (시도 {attempt + 1}/2)")
                 if attempt == 1:
                     print(f"    - 최종 실패: {e}")
-
     if not parody_data_list:
         print("\n[오류] 패러디 생성에 실패했습니다. 프로그램을 종료합니다.")
         return
-
     print(f"\n[4/5] 총 {len(parody_data_list)}개 패러디 생성 완료! 구글 시트에 저장합니다.")
     save_to_gsheet(parody_data_list)
     print(f"\n[5/5] 구글 시트에 패러디 데이터가 저장되었습니다. 프로그램을 종료합니다.")
