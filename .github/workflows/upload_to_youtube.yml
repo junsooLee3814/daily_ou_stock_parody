@@ -9,6 +9,10 @@ on:
 jobs:
   upload_to_youtube:
     runs-on: ubuntu-latest
+    env:
+      SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+      COUPANG_NOTICE: ${{ secrets.COUPANG_NOTICE }}
+      CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
