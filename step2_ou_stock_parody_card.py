@@ -5,6 +5,8 @@ import pandas as pd
 from common_utils import get_gsheet, get_today_kst
 from datetime import datetime
 import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 print("1. 초기화 시작...")
 
@@ -76,7 +78,7 @@ print("3. 구글 시트 연결 시작...")
 
 # 구글 시트에서 데이터 가져오기
 try:
-    sheet = get_gsheet('today_stock_parody')
+    sheet = get_gsheet(os.getenv('GSHEET_ID'), 'today_stock_parody')
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
     print(f"불러온 데이터 수: {len(df)}")

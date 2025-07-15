@@ -64,7 +64,9 @@ OUTRO_DURATION = 5 # 엔딩 인트로 이미지의 노출 시간 (초)
 WIDTH, HEIGHT = 1080, 1920 # 동영상 해상도
 
 # --- 경로 설정 ---
-now_str = get_today_kst().strftime('%Y%m%d')
+now_dt = get_today_kst()
+now_str = now_dt.strftime('%Y-%m-%d')
+now_time_str = now_dt.strftime('%H-%M')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CARD_IMG_DIR = os.path.join(BASE_DIR, 'parody_card')
@@ -77,7 +79,8 @@ BGM_PATH = os.path.join(BASE_DIR, 'asset', 'bgm.mp3')
 INTRO_CLIP_PATH = os.path.join(SINGLE_CLIP_DIR, f'intro_clip_{now_str}.mp4')
 OUTRO_CLIP_PATH = os.path.join(SINGLE_CLIP_DIR, f'outro_clip_{now_str}.mp4')
 MERGED_CLIP_PATH = os.path.join(VIDEO_OUT_DIR, f'merged_parody_{now_str}.mp4')
-FINAL_VIDEO_PATH = os.path.join(VIDEO_OUT_DIR, f'ou_stock_parody_final_{now_str}.mp4')
+# 최종 동영상 파일명에 YYYY-MM-DD_HH-MM 형식 적용
+FINAL_VIDEO_PATH = os.path.join(VIDEO_OUT_DIR, f'ou_stock_parody_final_{now_str}_{now_time_str}.mp4')
 
 # --- 폴더 생성 ---
 os.makedirs(VIDEO_OUT_DIR, exist_ok=True)
@@ -235,6 +238,14 @@ if __name__ == "__main__":
             temp_dirs=[SINGLE_CLIP_DIR],
             temp_files=[MERGED_CLIP_PATH]
         )
+        # 7. parody_video 폴더 내 최종 동영상(FINAL_VIDEO_PATH)을 제외한 mp4 파일 삭제
+        for f in glob.glob(os.path.join(VIDEO_OUT_DIR, '*.mp4')):
+            if os.path.abspath(f) != os.path.abspath(FINAL_VIDEO_PATH):
+                try:
+                    os.remove(f)
+                    print(f"[정리] 업로드 후 파일 삭제: {f}")
+                except Exception as e:
+                    print(f"[경고] 파일 삭제 실패: {f} ({e})")
         print(f"\n모든 작업 완료! 최종 영상은 다음 경로에 저장되었습니다:\n{FINAL_VIDEO_PATH}")
     else:
         print("[오류] 생성된 영상 클립이 없어 동영상 제작을 중단합니다.") 

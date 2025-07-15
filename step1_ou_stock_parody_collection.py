@@ -50,6 +50,9 @@ def parse_rawdata(file_path='asset/rawdata.txt'):
 
 # 구글 시트 설정
 SHEET_NAME = 'today_stock_parody'
+SHEET_ID = os.getenv('GSHEET_ID')
+if not SHEET_ID:
+    raise ValueError("GSHEET_ID 환경 변수가 설정되지 않았습니다.")
 
 def is_similar(str1, str2, threshold=0.8):
     """두 문자열의 유사도를 계산하여 중복 여부 판단"""
@@ -208,7 +211,7 @@ def create_parody_with_claude(news_content, original_prompt, existing_titles, re
 
 def save_to_gsheet(parody_data_list):
     """패러디 데이터를 구글 시트에 저장 (시트 초기화 후 저장)"""
-    sheet = get_gsheet(SHEET_NAME)
+    sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
     
     # 시트 초기화
     sheet.clear()

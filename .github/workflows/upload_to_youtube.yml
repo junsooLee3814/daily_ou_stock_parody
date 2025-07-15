@@ -2,7 +2,7 @@ name: YouTube Upload (OU Stock Parody)
 
 on:
   schedule:
-    # 매일 오전 6:30 KST (전날 21:30 UTC)에 실행
+      # 매일 오전 6:30 KST (전날 21:30 UTC)에 실행
     - cron: '30 21 * * *'
   workflow_dispatch:
 
@@ -10,8 +10,10 @@ jobs:
   upload_to_youtube:
     runs-on: ubuntu-latest
     env:
-      SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-      COUPANG_NOTICE: ${{ secrets.COUPANG_NOTICE }}
+      GSHEET_ID: ${{ secrets.GSHEET_ID }}
+      GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+      YOUTUBE_CLIENT_SECRETS: ${{ secrets.YOUTUBE_CLIENT_SECRETS }}
+      YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
       CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
     steps:
       - name: 📥 Checkout repository
@@ -22,26 +24,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      # --- [수정] 현재 경로와 권한을 포함한 상세 파일 목록 출력 ---
-      - name: 🐛 Debug current path and permissions
-        run: |
-          pwd
-          ls -la
-          ls -la youtube_uploader/
-      # --------------------------------------------------------
-
-      - name: 📦 Install YouTube uploader dependencies
-        working-directory: youtube_uploader # "./" 를 제거하여 경로를 단순화
-        run: pip install -r requirements_youtube.txt
+      - name: 📦 Install dependencies
+        run: pip install -r youtube_uploader/requirements_youtube.txt
 
       - name: 🔐 Restore YouTube authentication files
         run: |
           mkdir -p youtube_uploader
           echo "${{ secrets.YOUTUBE_CLIENT_SECRETS }}" > youtube_uploader/client_secrets.json
           printf "%s" '${{ secrets.YOUTUBE_TOKEN_JSON }}' > youtube_uploader/token.json
-
-      - name: 👀 Verify token.json content
-        run: cat youtube_uploader/token.json
 
       - name: 🚀 Upload to YouTube
         run: python youtube_uploader/upload_to_youtube.py

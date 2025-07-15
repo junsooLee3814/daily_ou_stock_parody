@@ -3,7 +3,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import os
 from dotenv import load_dotenv
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 # .env 파일에서 환경 변수를 로드
@@ -25,7 +25,8 @@ def get_gsheet(sheet_id, worksheet_name=None):
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         else:
             # 로컬 환경: 파일에서 직접 읽어옴
-            credentials_path = "service_account.json"
+            credentials_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'service_account.json'))
+            print("[DEBUG] service_account.json 경로:", credentials_path)
             if not os.path.exists(credentials_path):
                  raise FileNotFoundError(f"로컬 실행을 위한 '{credentials_path}' 파일을 찾을 수 없습니다.")
             creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
@@ -46,5 +47,10 @@ def get_gsheet(sheet_id, worksheet_name=None):
         raise 
 
 def get_today_kst():
-    """대한민국(KST) 기준 오늘 날짜 반환"""
-    return datetime.now(ZoneInfo("Asia/Seoul")).date() 
+    """현재 한국 시각(시/분/초 포함) 반환"""
+    try:
+        import pytz
+        return datetime.now(pytz.timezone('Asia/Seoul'))
+    except ImportError:
+        # pytz가 없으면 UTC+9로 계산
+        return datetime.utcnow() + timedelta(hours=9) 
