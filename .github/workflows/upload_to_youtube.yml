@@ -16,8 +16,10 @@ jobs:
       YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
       CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
     steps:
-      - name: 📥 Checkout repository
+      - name: 📥 Checkout repository with LFS
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: 🐍 Set up Python
         uses: actions/setup-python@v4
