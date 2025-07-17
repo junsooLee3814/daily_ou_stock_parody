@@ -156,7 +156,7 @@ def rank_news_by_importance_with_claude(news_list):
 """
 
     response = client.messages.create(
-        model="claude-3-haiku-20240307",
+        model="claude-3-5-sonnet-20240620",
         max_tokens=1000,
         temperature=0.1,
         system="",
@@ -211,7 +211,7 @@ def create_parody_with_claude(news_content, original_prompt, existing_titles, re
         messages.append(MessageParam(role="user", content=user_message))
 
     response = client.messages.create(
-        model="claude-3-haiku-20240307",
+        model="claude-3-5-sonnet-20240620",
         max_tokens=2000,
         temperature=0.7,
         system="",
