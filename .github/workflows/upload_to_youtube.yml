@@ -40,10 +40,12 @@ jobs:
 
       - name: 🧹 Clean up old video files
         run: |
-          echo "🧹 parody_video 폴더에서 최근 파일만 남기고 이전 파일들 삭제 중..."
+          echo "🧹 parody_video 폴더에서 최근 LFS 파일만 남기고 이전 파일들 삭제 중..."
+          
+          # parody_video 폴더로 이동
           cd parody_video
           
-          # .mp4 파일들 중 가장 최근 파일 찾기
+          # .mp4 파일들 중 가장 최근 파일 찾기 (수정 시간 기준)
           latest_file=$(ls -t *.mp4 2>/dev/null | head -1)
           
           if [ -n "$latest_file" ]; then
@@ -60,4 +62,35 @@ jobs:
             echo "✅ 정리 완료! 최근 파일만 남겼습니다."
           else
             echo "⚠️ 삭제할 .mp4 파일이 없습니다."
+          fi
+
+      - name: 🧹 Clean up Git LFS history
+        run: |
+          echo "🧹 Git LFS 히스토리에서 이전 파일들 정리 중..."
+          
+          # parody_video 폴더의 .mp4 파일들 중 최근 파일 찾기
+          cd parody_video
+          latest_file=$(ls -t *.mp4 2>/dev/null | head -1)
+          
+          if [ -n "$latest_file" ]; then
+            echo "📹 최근 파일: $latest_file"
+            
+            # Git LFS에서 최근 파일을 제외한 모든 .mp4 파일 제거
+            for file in *.mp4; do
+              if [ "$file" != "$latest_file" ]; then
+                echo "🗑️ LFS에서 제거: $file"
+                git lfs untrack "$file" 2>/dev/null || true
+                git rm --cached "$file" 2>/dev/null || true
+              fi
+            done
+            
+            # 변경사항 커밋
+            git config --global user.email "action@github.com"
+            git config --global user.name "GitHub Action"
+            git add -A
+            git commit -m "🧹 LFS 파일 정리: 최근 파일만 유지" || true
+            
+            echo "✅ LFS 히스토리 정리 완료!"
+          else
+            echo "⚠️ LFS에서 정리할 .mp4 파일이 없습니다."
           fi
