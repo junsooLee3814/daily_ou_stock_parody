@@ -227,7 +227,9 @@ def create_parody_with_claude(news_content, original_prompt, existing_content, r
 {retry_context['error_message']}
 위 오류를 참고하여, 유효한 JSON 형식에 맞춰 수정된 응답을 ```json ... ``` 코드 블록 안에 다시 생성해주세요.
 """
-        messages.append(MessageParam(role="assistant", content=retry_context['malformed_json']))
+        # 빈 메시지 방지를 위해 내용이 있을 때만 추가
+        if retry_context['malformed_json'].strip():
+            messages.append(MessageParam(role="assistant", content=retry_context['malformed_json']))
         messages.append(MessageParam(role="user", content=user_message))
 
     response = client.messages.create(
@@ -274,6 +276,21 @@ def main():
     if not raw_config:
         print("[오류] 설정 파일(asset/rawdata.txt)을 읽을 수 없습니다. 프로그램을 종료합니다.")
         return
+    
+    # 카드뉴스 개수 설정 가져오기
+    card_count_config = raw_config.get('카드뉴스개수', ['카드뉴스 개수 : 최대 20개.'])
+    card_count_str = card_count_config[0] if isinstance(card_count_config, list) else card_count_config
+    card_count = 20  # 기본값
+    
+    # "카드뉴스 개수 : 최대 X개." 형식에서 숫자 추출
+    import re
+    count_match = re.search(r'최대 (\d+)개', card_count_str)
+    if count_match:
+        card_count = int(count_match.group(1))
+        print(f"[설정] 카드뉴스 개수: {card_count}개")
+    else:
+        print(f"[설정] 카드뉴스 개수 파싱 실패, 기본값 {card_count}개 사용")
+    
     rss_urls = raw_config.get('RSS_URL 지정', [])
     if isinstance(rss_urls, str):
         rss_urls = [rss_urls]
@@ -285,9 +302,9 @@ def main():
     if not all_news:
         print("\n[오류] 한경 증권뉴스에서 뉴스를 가져오지 못했습니다. 프로그램을 종료합니다.")
         return
-    print(f"\n[2/5] Claude 3.5가 독자들이 가장 관심을 가질 만한 뉴스 20개를 직접 선정합니다...")
+    print(f"\n[2/5] Claude 3.5가 독자들이 가장 관심을 가질 만한 뉴스 {card_count}개를 직접 선정합니다...")
     ranked_news = rank_news_by_importance_with_claude(all_news)
-    top_news = ranked_news[:20]
+    top_news = ranked_news[:card_count]
     print(f"\n[2.5/5] 총 {len(top_news)}개 뉴스 선별 완료! 패러디 생성을 시작합니다.")
     print(f"\n[3/5] 중요도 상위 {len(top_news)}개 뉴스로 패러디 생성 중...")
     parody_data_list = []
@@ -435,9 +452,22 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
     if not parody_data_list:
         print("\n[오류] 패러디 생성에 실패했습니다. 프로그램을 종료합니다.")
         return
-    print(f"\n[4/5] 총 {len(parody_data_list)}개 패러디 생성 완료! 구글 시트에 저장합니다.")
-    save_to_gsheet(parody_data_list)
-    print(f"\n[5/5] 구글 시트에 패러디 데이터가 저장되었습니다. 프로그램을 종료합니다.")
+    print(f"\n[4/5] 총 {len(parody_data_list)}개 패러디 생성 완료!")
+    
+    # 구글 시트 저장 시도 (실패해도 계속 진행)
+    try:
+        save_to_gsheet(parody_data_list)
+        print(f"\n[5/5] 구글 시트에 패러디 데이터가 저장되었습니다.")
+    except Exception as e:
+        print(f"\n[5/5] 구글 시트 저장 실패: {e}")
+        print("생성된 패러디 데이터:")
+        for i, data in enumerate(parody_data_list, 1):
+            print(f"\n--- 패러디 {i} ---")
+            print(f"제목: {data.get('parody_title', 'N/A')}")
+            print(f"Setup: {data.get('setup', 'N/A')}")
+            print(f"Punchline: {data.get('punchline', 'N/A')}")
+    
+    print("프로그램을 종료합니다.")
 
 if __name__ == "__main__":
     main()
