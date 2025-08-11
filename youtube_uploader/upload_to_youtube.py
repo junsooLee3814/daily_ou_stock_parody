@@ -176,14 +176,38 @@ if __name__ == '__main__':
         print(f"📺 영상 URL: https://youtu.be/{video_id}")
         print(f"🔍 검색 최적화: 증권뉴스, 30대, 40대, 50대")
         print(f"⚖️ 쿠팡파트너스 의무사항 완료")
-        # 업로드한 파일(latest_video)은 남기고, 나머지 .mp4 파일 삭제
-        for f in glob.glob(os.path.join(video_dir, '*.mp4')):
-            if os.path.abspath(f) != os.path.abspath(latest_video):
-                try:
-                    os.remove(f)
-                    print(f"🗑️ 추가 파일 삭제 완료: {f}")
-                except Exception as e:
-                    print(f"⚠️ 추가 파일 삭제 실패: {f} ({e})")
+        print(f"📁 파일 정리는 step3에서 자동으로 처리됩니다.")
+        
+        # 업로드 성공 후 파일 정리 (LFS 고려)
+        print(f"🧹 업로드 완료 후 파일 정리 중...")
+        try:
+            # 업로드한 파일을 제외한 나머지 파일들 정리
+            video_files = glob.glob(os.path.join(video_dir, '*.mp4'))
+            cleaned_count = 0
+            
+            for video_file in video_files:
+                if os.path.abspath(video_file) != os.path.abspath(latest_video):
+                    try:
+                        # LFS untrack 시도
+                        import subprocess
+                        subprocess.run(['git', 'lfs', 'untrack', video_file], 
+                                     capture_output=True, text=True, check=False)
+                        
+                        # 파일 삭제
+                        os.remove(video_file)
+                        print(f"   - 정리 완료: {os.path.basename(video_file)}")
+                        cleaned_count += 1
+                    except PermissionError:
+                        print(f"   - 권한 오류로 정리 실패: {os.path.basename(video_file)}")
+                    except Exception as e:
+                        print(f"   - 정리 실패: {os.path.basename(video_file)} ({e})")
+            
+            if cleaned_count > 0:
+                print(f"✅ {cleaned_count}개 파일 정리 완료")
+            else:
+                print(f"ℹ️ 정리할 파일이 없습니다")
+        except Exception as e:
+            print(f"⚠️ 파일 정리 중 오류 발생: {e}")
         # 업로드 후 YouTube API로 영상 정보 확인 (삭제)
         # try:
         #     youtube = get_authenticated_service()

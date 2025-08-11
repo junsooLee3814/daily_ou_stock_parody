@@ -38,26 +38,11 @@ jobs:
       - name: 🚀 Upload to YouTube
         run: python youtube_uploader/upload_to_youtube.py
 
-      - name: 🧹 Clean up old video files
+      - name: 🧹 Clean up old video files (LFS aware)
         run: |
-          echo "🧹 오래된 비디오 파일 정리 중..."
+          echo "🧹 오래된 비디오 파일 정리 중 (LFS 고려)..."
           if [ -d "parody_video" ]; then
             # 가장 최근 파일 찾기 (파일명 기준)
-            echo "📊 파일별 생성 시간 확인:"
-            for file in parody_video/*.mp4; do
-              if [ -f "$file" ]; then
-                filename=$(basename "$file")
-                # 파일명에서 날짜/시간 추출 (senior_ou_news_parody_20250721_072003.mp4)
-                date_part=$(echo "$filename" | grep -o '2025[0-9]{4}_[0-9]{6}' | head -1)
-                if [ -n "$date_part" ]; then
-                  echo "   📹 $filename - 생성시간: $date_part"
-                else
-                  echo "   📹 $filename - 시간정보 없음"
-                fi
-              fi
-            done
-            
-            # 파일명 기준으로 최신 파일 찾기 (날짜+시간 역순 정렬)
             latest_file=$(find parody_video -name "*.mp4" | while read file; do
               filename=$(basename "$file")
               date_part=$(echo "$filename" | grep -o '2025[0-9]{4}_[0-9]{6}' | head -1)
@@ -68,33 +53,43 @@ jobs:
               fi
             done | sort -r | head -1 | cut -d' ' -f2-)
             
-            echo "📹 선택된 최신 파일: $(basename "$latest_file")"
-            
-            # 오래된 파일들 삭제 (LFS 파일 포함)
-            deleted_count=0
-            for file in parody_video/*.mp4; do
-              if [ -f "$file" ] && [ "$file" != "$latest_file" ]; then
-                echo "🗑️ 삭제: $(basename "$file")"
-                # LFS 파일도 함께 삭제
-                git lfs untrack "$file" 2>/dev/null || true
-                rm "$file"
-                deleted_count=$((deleted_count + 1))
-              fi
-            done
-            echo "✅ 정리 완료: $deleted_count개 파일 삭제됨"
-            
-            # Git에서 삭제된 파일들 커밋
-            if [ $deleted_count -gt 0 ]; then
-              echo "📝 Git에서 삭제된 파일들 커밋 중..."
-              git add -A
-              git config --local user.email "action@github.com"
-              git config --local user.name "GitHub Action"
-              git commit -m "🧹 오래된 비디오 파일 정리 - $deleted_count개 파일 삭제" || echo "⚠️ 커밋 실패 (변경사항 없음)"
-              git push || echo "⚠️ 푸시 실패"
+            if [ -n "$latest_file" ]; then
+              echo "📹 최신 파일 보존: $(basename "$latest_file")"
+              
+              # 오래된 파일들 삭제 (LFS 파일 포함)
+              deleted_count=0
+              for file in parody_video/*.mp4; do
+                if [ -f "$file" ] && [ "$file" != "$latest_file" ]; then
+                  echo "🗑️ 삭제 시도: $(basename "$file")"
+                  
+                  # LFS untrack 먼저 시도
+                  git lfs untrack "$file" 2>/dev/null || true
+                  
+                  # 파일 삭제 시도
+                  if rm "$file" 2>/dev/null; then
+                    echo "   ✅ 삭제 완료: $(basename "$file")"
+                    deleted_count=$((deleted_count + 1))
+                  else
+                    echo "   ⚠️ 삭제 실패: $(basename "$file") (권한 문제 또는 LFS 파일)"
+                  fi
+                fi
+              done
+              echo "✅ 정리 완료: $deleted_count개 파일 삭제됨"
+            else
+              echo "⚠️ parody_video 폴더에 mp4 파일이 없습니다."
             fi
           else
             echo "⚠️ parody_video 디렉토리가 없습니다."
           fi
+
+      - name: 📝 Commit and push changes
+        run: |
+          echo "📝 변경사항 커밋 및 푸시 중..."
+          git add -A
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git commit -m "🎬 YouTube 업로드 완료 - $(date +'%Y-%m-%d %H:%M')" || echo "⚠️ 커밋 실패 (변경사항 없음)"
+          git push || echo "⚠️ 푸시 실패"
 
       - name: 🧹 Clean up LFS storage
         run: |

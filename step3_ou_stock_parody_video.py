@@ -238,15 +238,39 @@ if __name__ == "__main__":
             temp_dirs=[SINGLE_CLIP_DIR],
             temp_files=[MERGED_CLIP_PATH]
         )
-        # 7. parody_video 폴더 내 최신 동영상 1개를 제외한 mp4 파일 삭제
+        # 7. parody_video 폴더 내 방금 생성한 최종 파일을 제외한 기존 mp4 파일 삭제 (LFS 고려)
+        print("6. 기존 동영상 파일 정리 중...")
         mp4_files = glob.glob(os.path.join(VIDEO_OUT_DIR, '*.mp4'))
-        mp4_files_sorted = sorted(mp4_files, key=os.path.getmtime, reverse=True)
-        for f in mp4_files_sorted[1:]:
+        deleted_count = 0
+        
+        for mp4_file in mp4_files:
+            # 방금 생성한 최종 파일은 제외
+            if os.path.abspath(mp4_file) == os.path.abspath(FINAL_VIDEO_PATH):
+                print(f"   - 최종 파일 보존: {os.path.basename(mp4_file)}")
+                continue
+                
             try:
-                os.remove(f)
-                print(f"[정리] 업로드 후 파일 삭제: {f}")
+                # LFS 파일인지 확인하고 처리
+                if os.path.exists('.gitattributes'):
+                    # Git LFS untrack 먼저 시도
+                    try:
+                        subprocess.run(['git', 'lfs', 'untrack', mp4_file], 
+                                     capture_output=True, text=True, check=False)
+                        print(f"   - LFS untrack 완료: {os.path.basename(mp4_file)}")
+                    except Exception:
+                        pass  # LFS untrack 실패해도 계속 진행
+                
+                # 파일 삭제
+                os.remove(mp4_file)
+                print(f"   - 기존 파일 삭제: {os.path.basename(mp4_file)}")
+                deleted_count += 1
+            except PermissionError as e:
+                print(f"[경고] 권한 오류로 파일 삭제 실패: {os.path.basename(mp4_file)} ({e})")
+                print(f"   - 파일이 사용 중이거나 LFS 파일일 수 있습니다.")
             except Exception as e:
-                print(f"[경고] 파일 삭제 실패: {f} ({e})")
+                print(f"[경고] 파일 삭제 실패: {os.path.basename(mp4_file)} ({e})")
+        
+        print(f"   - 정리 완료: {deleted_count}개 파일 삭제됨")
         print(f"\n모든 작업 완료! 최종 영상은 다음 경로에 저장되었습니다:\n{FINAL_VIDEO_PATH}")
     else:
         print("[오류] 생성된 영상 클립이 없어 동영상 제작을 중단합니다.") 
