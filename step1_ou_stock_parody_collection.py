@@ -2,6 +2,7 @@ import os
 import feedparser
 from datetime import datetime, timedelta
 from anthropic import Anthropic
+from anthropic._exceptions import OverloadedError, RateLimitError, APIError
 from dotenv import load_dotenv
 from common_utils import get_gsheet, get_today_kst
 import json
@@ -155,13 +156,17 @@ def rank_news_by_importance_with_claude(news_list):
 가장 중요한 20개 뉴스의 ID를 순서대로 작성하세요:
 """
 
-    response = client.messages.create(
-        model="claude-3-5-sonnet-20240620",
-        max_tokens=1000,
-        temperature=0.1,
-        system="",
-        messages=[MessageParam(role="user", content=prompt)]
-    )
+    try:
+        response = safe_api_call(
+            client, 
+            [MessageParam(role="user", content=prompt)],
+            max_retries=5,
+            base_delay=3
+        )
+    except Exception as e:
+        print(f"  ! Claude API 호출 실패: {e}")
+        print("  ! 원래 순서대로 뉴스를 반환합니다.")
+        return news_list
     response_block = response.content[0]
     response_text = getattr(response_block, 'text', None) or getattr(response_block, 'content', None) or str(response_block)
     response_text = response_text.strip()
@@ -232,13 +237,11 @@ def create_parody_with_claude(news_content, original_prompt, existing_content, r
             messages.append(MessageParam(role="assistant", content=retry_context['malformed_json']))
         messages.append(MessageParam(role="user", content=user_message))
 
-    response = client.messages.create(
-        model="claude-3-5-sonnet-20240620",
-        max_tokens=2000,
-        temperature=0.8,  # 창의성을 위해 온도 상승
-        system="",
-        messages=messages
-    )
+    try:
+        response = safe_api_call(client, messages, max_retries=5, base_delay=3)
+    except Exception as e:
+        print(f"  ! Claude API 호출 실패: {e}")
+        raise e
     
     return response.content
 
@@ -270,85 +273,118 @@ def save_to_gsheet(parody_data_list):
         ]
         sheet.append_row(row)
 
+def safe_api_call(client, messages, max_retries=3, base_delay=2):
+    """API 호출을 안전하게 수행하는 함수 (재시도 로직 포함)"""
+    for attempt in range(max_retries):
+        try:
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20240620",
+                max_tokens=2000,
+                temperature=0.8,
+                system="",
+                messages=messages
+            )
+            return response
+        except OverloadedError as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)  # 지수 백오프
+                print(f"  ! API 과부하 오류 (시도 {attempt + 1}/{max_retries}). {delay}초 후 재시도...")
+                time.sleep(delay)
+            else:
+                print(f"  ! 최대 재시도 횟수 초과. API 과부하로 인한 실패.")
+                raise e
+        except (RateLimitError, APIError) as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                print(f"  ! API 오류 (시도 {attempt + 1}/{max_retries}). {delay}초 후 재시도...")
+                time.sleep(delay)
+            else:
+                print(f"  ! 최대 재시도 횟수 초과. API 오류로 인한 실패.")
+                raise e
+        except Exception as e:
+            print(f"  ! 예상치 못한 오류: {e}")
+            raise e
+
 def main():
-    print("[1/5] 한경 증권뉴스만 중요도 순으로 뉴스 선별 중...")
-    raw_config = parse_rawdata()
-    if not raw_config:
-        print("[오류] 설정 파일(asset/rawdata.txt)을 읽을 수 없습니다. 프로그램을 종료합니다.")
-        return
-    
-    # 카드뉴스 개수 설정 가져오기
-    card_count_config = raw_config.get('카드뉴스개수', ['카드뉴스 개수 : 최대 20개.'])
-    card_count_str = card_count_config[0] if isinstance(card_count_config, list) else card_count_config
-    card_count = 20  # 기본값
-    
-    # "카드뉴스 개수 : 최대 X개." 형식에서 숫자 추출
-    import re
-    count_match = re.search(r'최대 (\d+)개', card_count_str)
-    if count_match:
-        card_count = int(count_match.group(1))
-        print(f"[설정] 카드뉴스 개수: {card_count}개")
-    else:
-        print(f"[설정] 카드뉴스 개수 파싱 실패, 기본값 {card_count}개 사용")
-    
-    rss_urls = raw_config.get('RSS_URL 지정', [])
-    if isinstance(rss_urls, str):
-        rss_urls = [rss_urls]
-    if not rss_urls:
-        print("[오류] asset/rawdata.txt 파일에서 'RSS_URL 지정'을 찾을 수 없습니다.")
-        return
-    rss_url = rss_urls[0]  # 한경 증권뉴스만 사용
-    all_news = fetch_news(rss_url)
-    if not all_news:
-        print("\n[오류] 한경 증권뉴스에서 뉴스를 가져오지 못했습니다. 프로그램을 종료합니다.")
-        return
-    print(f"\n[2/5] Claude 3.5가 독자들이 가장 관심을 가질 만한 뉴스 {card_count}개를 직접 선정합니다...")
-    ranked_news = rank_news_by_importance_with_claude(all_news)
-    top_news = ranked_news[:card_count]
-    print(f"\n[2.5/5] 총 {len(top_news)}개 뉴스 선별 완료! 패러디 생성을 시작합니다.")
-    print(f"\n[3/5] 중요도 상위 {len(top_news)}개 뉴스로 패러디 생성 중...")
-    parody_data_list = []
-    today_str = get_today_kst().strftime('%Y-%m-%d')
-    existing_content = []  # 전체 콘텐츠 추적
-    
-    for i, news in enumerate(top_news):
-        news_content = f"제목: {news['title']}\n내용: {news['summary']}\n링크: {news['link']}"
-        current_date = today_str
-        original_title_safe = news['title'].replace('"', "'")
-        news_link = news['link']
-        news_title = news['title']
-        news_summary = news['summary']
+    try:
+        print("[1/5] 한경 증권뉴스만 중요도 순으로 뉴스 선별 중...")
+        raw_config = parse_rawdata()
+        if not raw_config:
+            print("[오류] 설정 파일(asset/rawdata.txt)을 읽을 수 없습니다. 프로그램을 종료합니다.")
+            return
         
-        # 다양성을 위한 동적 스타일 지정
-        style_index = i % 6
-        style_instructions = [
-            "숫자 충격형 스타일: 구체적 수치와 함께 놀라움 표현",
-            "질문형 스타일: 궁금증을 유발하는 질문으로 제목 구성", 
-            "비교/대조형 스타일: A vs B 또는 과거와 현재 비교",
-            "상황극형 스타일: 특정 상황이나 장면을 연상시키는 제목",
-            "밈/트렌드형 스타일: 최신 인터넷 문화나 밈 활용",
-            "현실 풍자형 스타일: 직장인/개미 현실을 위트있게 풍자"
-        ]
+        # 카드뉴스 개수 설정 가져오기
+        card_count_config = raw_config.get('카드뉴스개수', ['카드뉴스 개수 : 최대 20개.'])
+        card_count_str = card_count_config[0] if isinstance(card_count_config, list) else card_count_config
+        card_count = 20  # 기본값
         
-        setup_styles = [
-            "출근길 지하철에서 뉴스 보는 상황",
-            "점심시간 동료들과 대화하는 상황", 
-            "퇴근 후 집에서 주식 확인하는 상황",
-            "주말 카페에서 투자 고민하는 상황",
-            "회사 화장실에서 몰래 주식 보는 상황",
-            "새벽에 해외 증시 확인하는 상황"
-        ]
+        # "카드뉴스 개수 : 최대 X개." 형식에서 숫자 추출
+        import re
+        count_match = re.search(r'최대 (\d+)개', card_count_str)
+        if count_match:
+            card_count = int(count_match.group(1))
+            print(f"[설정] 카드뉴스 개수: {card_count}개")
+        else:
+            print(f"[설정] 카드뉴스 개수 파싱 실패, 기본값 {card_count}개 사용")
         
-        punchline_styles = [
-            "내적 독백 형식으로 솔직한 심경 표현",
-            "가족/친구와의 대화 형식",
-            "SNS 댓글이나 메시지 형식",
-            "뉴스 인터뷰 패러디 형식", 
-            "광고나 홍보 문구 패러디",
-            "영화/드라마 대사 패러디"
-        ]
+        rss_urls = raw_config.get('RSS_URL 지정', [])
+        if isinstance(rss_urls, str):
+            rss_urls = [rss_urls]
+        if not rss_urls:
+            print("[오류] asset/rawdata.txt 파일에서 'RSS_URL 지정'을 찾을 수 없습니다.")
+            return
+        rss_url = rss_urls[0]  # 한경 증권뉴스만 사용
+        all_news = fetch_news(rss_url)
+        if not all_news:
+            print("\n[오류] 한경 증권뉴스에서 뉴스를 가져오지 못했습니다. 프로그램을 종료합니다.")
+            return
+        print(f"\n[2/5] Claude 3.5가 독자들이 가장 관심을 가질 만한 뉴스 {card_count}개를 직접 선정합니다...")
+        ranked_news = rank_news_by_importance_with_claude(all_news)
+        top_news = ranked_news[:card_count]
+        print(f"\n[2.5/5] 총 {len(top_news)}개 뉴스 선별 완료! 패러디 생성을 시작합니다.")
+        print(f"\n[3/5] 중요도 상위 {len(top_news)}개 뉴스로 패러디 생성 중...")
+        parody_data_list = []
+        today_str = get_today_kst().strftime('%Y-%m-%d')
+        existing_content = []  # 전체 콘텐츠 추적
         
-        parody_prompt = f"""
+        for i, news in enumerate(top_news):
+            news_content = f"제목: {news['title']}\n내용: {news['summary']}\n링크: {news['link']}"
+            current_date = today_str
+            original_title_safe = news['title'].replace('"', "'")
+            news_link = news['link']
+            news_title = news['title']
+            news_summary = news['summary']
+            
+            # 다양성을 위한 동적 스타일 지정
+            style_index = i % 6
+            style_instructions = [
+                "숫자 충격형 스타일: 구체적 수치와 함께 놀라움 표현",
+                "질문형 스타일: 궁금증을 유발하는 질문으로 제목 구성", 
+                "비교/대조형 스타일: A vs B 또는 과거와 현재 비교",
+                "상황극형 스타일: 특정 상황이나 장면을 연상시키는 제목",
+                "밈/트렌드형 스타일: 최신 인터넷 문화나 밈 활용",
+                "현실 풍자형 스타일: 직장인/개미 현실을 위트있게 풍자"
+            ]
+            
+            setup_styles = [
+                "출근길 지하철에서 뉴스 보는 상황",
+                "점심시간 동료들과 대화하는 상황", 
+                "퇴근 후 집에서 주식 확인하는 상황",
+                "주말 카페에서 투자 고민하는 상황",
+                "회사 화장실에서 몰래 주식 보는 상황",
+                "새벽에 해외 증시 확인하는 상황"
+            ]
+            
+            punchline_styles = [
+                "내적 독백 형식으로 솔직한 심경 표현",
+                "가족/친구와의 대화 형식",
+                "SNS 댓글이나 메시지 형식",
+                "뉴스 인터뷰 패러디 형식", 
+                "광고나 홍보 문구 패러디",
+                "영화/드라마 대사 패러디"
+            ]
+            
+            parody_prompt = f"""
 당신은 조회수 급상승을 목표로 하는 증권 뉴스 패러디 전문가입니다.
 
 【핵심 미션】
@@ -416,58 +452,87 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
 
 지정된 스타일과 상황에 맞춰, 기존과 완전히 차별화된 독창적 패러디를 생성하세요.
 """
-        print(f"  - [{i+1}/{len(top_news)}] 패러디 생성 중... (스타일: {style_instructions[style_index][:15]}...)")
-        response_text = ""
-        error = None
-        for attempt in range(2):
-            try:
-                retry_context = None
-                if attempt > 0:
-                    retry_context = {"malformed_json": response_text, "error_message": str(error)}
-                parody_result_blocks = create_parody_with_claude(
-                    news_content, parody_prompt, existing_content, retry_context
-                )
-                response_block = parody_result_blocks[0]
-                response_text = getattr(response_block, 'text', None) or getattr(response_block, 'content', None) or str(response_block)
-                json_match = re.search(r'```json\n(\{.*?\})\n```', response_text, re.DOTALL)
-                if not json_match:
-                    start_index = response_text.find('{')
-                    end_index = response_text.rfind('}')
-                    if start_index != -1 and end_index != -1 and start_index < end_index:
-                        json_text = response_text[start_index:end_index+1]
+            print(f"  - [{i+1}/{len(top_news)}] 패러디 생성 중... (스타일: {style_instructions[style_index][:15]}...)")
+            response_text = ""
+            error = None
+            for attempt in range(3):  # 재시도 횟수 증가
+                try:
+                    retry_context = None
+                    if attempt > 0:
+                        retry_context = {"malformed_json": response_text, "error_message": str(error)}
+                    
+                    # API 호출 전 잠시 대기 (API 부하 분산)
+                    if attempt > 0:
+                        time.sleep(2)
+                    
+                    parody_result_blocks = create_parody_with_claude(
+                        news_content, parody_prompt, existing_content, retry_context
+                    )
+                    response_block = parody_result_blocks[0]
+                    response_text = getattr(response_block, 'text', None) or getattr(response_block, 'content', None) or str(response_block)
+                    
+                    # JSON 파싱 개선
+                    json_match = re.search(r'```json\n(\{.*?\})\n```', response_text, re.DOTALL)
+                    if not json_match:
+                        start_index = response_text.find('{')
+                        end_index = response_text.rfind('}')
+                        if start_index != -1 and end_index != -1 and start_index < end_index:
+                            json_text = response_text[start_index:end_index+1]
+                        else:
+                            # JSON이 없는 경우 기본 구조 생성
+                            json_text = f'{{"date": "{current_date}", "original_title": "{original_title_safe}", "parody_title": "API 오류로 인한 기본 제목", "setup": "API 호출 중 오류가 발생했습니다.", "punchline": "다시 시도해주세요.", "humor_lesson": "API 서버가 과부하 상태일 수 있습니다.", "disclaimer": "면책조항:패러디/특정기관,개인과 무관/투자조언아님/재미목적", "source_url": "{news_link}"}}'
                     else:
-                        json_text = response_text
-                else:
-                    json_text = json_match.group(1)
-                parody_data = json.loads(json_text)
-                parody_data_list.append(parody_data)
-                existing_content.append(parody_data)  # 전체 콘텐츠 추가
-                print("    - 성공!")
-                break
-            except Exception as e:
-                error = e
-                print(f"    ! 파싱 실패 (시도 {attempt + 1}/2)")
-                if attempt == 1:
-                    print(f"    - 최종 실패: {e}")
-    if not parody_data_list:
-        print("\n[오류] 패러디 생성에 실패했습니다. 프로그램을 종료합니다.")
-        return
-    print(f"\n[4/5] 총 {len(parody_data_list)}개 패러디 생성 완료!")
-    
-    # 구글 시트 저장 시도 (실패해도 계속 진행)
-    try:
-        save_to_gsheet(parody_data_list)
-        print(f"\n[5/5] 구글 시트에 패러디 데이터가 저장되었습니다.")
+                        json_text = json_match.group(1)
+                    
+                    parody_data = json.loads(json_text)
+                    parody_data_list.append(parody_data)
+                    existing_content.append(parody_data)  # 전체 콘텐츠 추가
+                    print("    - 성공!")
+                    break
+                except Exception as e:
+                    error = e
+                    print(f"    ! 패러디 생성 실패 (시도 {attempt + 1}/3): {e}")
+                    if attempt == 2:  # 마지막 시도
+                        print(f"    - 최종 실패: {e}")
+                        # 기본 패러디 데이터 생성
+                        default_parody = {
+                            'date': current_date,
+                            'original_title': original_title_safe,
+                            'parody_title': f"API 오류 - {news_title[:20]}...",
+                            'setup': "API 서버 과부하로 인한 기본 설정",
+                            'punchline': "서버가 복구되면 다시 시도해주세요",
+                            'humor_lesson': "투자보다 중요한 것은 인내심입니다",
+                            'disclaimer': "면책조항:패러디/특정기관,개인과 무관/투자조언아님/재미목적",
+                            'source_url': news_link
+                        }
+                        parody_data_list.append(default_parody)
+                        existing_content.append(default_parody)
+                        print("    - 기본 패러디 데이터로 대체")
+        if not parody_data_list:
+            print("\n[오류] 패러디 생성에 실패했습니다. 프로그램을 종료합니다.")
+            return
+        print(f"\n[4/5] 총 {len(parody_data_list)}개 패러디 생성 완료!")
+        
+        # 구글 시트 저장 시도 (실패해도 계속 진행)
+        try:
+            save_to_gsheet(parody_data_list)
+            print(f"\n[5/5] 구글 시트에 패러디 데이터가 저장되었습니다.")
+        except Exception as e:
+            print(f"\n[5/5] 구글 시트 저장 실패: {e}")
+            print("💡 service_account.json 파일이 필요합니다.")
+            print("📋 생성된 패러디 데이터:")
+            for i, data in enumerate(parody_data_list, 1):
+                print(f"\n--- 패러디 {i} ---")
+                print(f"제목: {data.get('parody_title', 'N/A')}")
+                print(f"Setup: {data.get('setup', 'N/A')}")
+                print(f"Punchline: {data.get('punchline', 'N/A')}")
+                print(f"Lesson: {data.get('humor_lesson', 'N/A')}")
+                print(f"원본: {data.get('original_title', 'N/A')}")
+        
+        print("프로그램을 종료합니다.")
     except Exception as e:
-        print(f"\n[5/5] 구글 시트 저장 실패: {e}")
-        print("생성된 패러디 데이터:")
-        for i, data in enumerate(parody_data_list, 1):
-            print(f"\n--- 패러디 {i} ---")
-            print(f"제목: {data.get('parody_title', 'N/A')}")
-            print(f"Setup: {data.get('setup', 'N/A')}")
-            print(f"Punchline: {data.get('punchline', 'N/A')}")
-    
-    print("프로그램을 종료합니다.")
+        print(f"\n[치명적 오류] 프로그램 실행 중 예상치 못한 오류가 발생했습니다: {e}")
+        print("프로그램을 종료합니다.")
 
 if __name__ == "__main__":
     main()
