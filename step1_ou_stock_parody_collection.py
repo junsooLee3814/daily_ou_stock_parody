@@ -608,13 +608,17 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
             print(f"📄 CSV 파일이 생성되었습니다: {csv_path}")
             print(f"📁 파일 경로: {os.path.abspath(csv_path)}")
             
-            # Google Drive 업로드 시도
-            google_drive_folder_id = "1dpMzrdIl5iL8gmkrxwtiWBCOiMgU-toG"
-            drive_url = upload_to_google_drive(csv_path, google_drive_folder_id)
-            if drive_url:
-                print(f"☁️ Google Drive 업로드 성공: {drive_url}")
-            else:
-                print("⚠️ Google Drive 업로드 실패 (로컬 CSV 파일은 생성됨)")
+            # Google Drive 업로드 시도 (선택사항)
+            try:
+                google_drive_folder_id = "1dpMzrdIl5iL8gmkrxwtiWBCOiMgU-toG"
+                drive_url = upload_to_google_drive(csv_path, google_drive_folder_id)
+                if drive_url:
+                    print(f"☁️ Google Drive 업로드 성공: {drive_url}")
+                else:
+                    print("ℹ️ Google Drive 업로드 건너뜀 (로컬 CSV 파일만 생성됨)")
+            except Exception as e:
+                print(f"ℹ️ Google Drive 업로드 건너뜀: {e}")
+                print("💡 Google Drive 업로드를 원한다면 generate_drive_token.py를 실행하세요.")
         else:
             print("❌ CSV 파일 생성에 실패했습니다.")
         
