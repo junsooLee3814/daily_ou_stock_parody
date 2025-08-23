@@ -12,6 +12,7 @@ import time
 from zoneinfo import ZoneInfo
 from anthropic.types import MessageParam
 import csv
+import glob
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
