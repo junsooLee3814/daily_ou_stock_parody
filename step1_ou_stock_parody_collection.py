@@ -11,6 +11,10 @@ from pathlib import Path
 import time
 from zoneinfo import ZoneInfo
 from anthropic.types import MessageParam
+import csv
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 # .env 파일의 절대 경로를 지정하여 로드
 env_path = Path('.') / '.env'
@@ -273,6 +277,83 @@ def save_to_gsheet(parody_data_list):
         ]
         sheet.append_row(row)
 
+def save_to_csv(parody_data_list):
+    """패러디 데이터를 CSV 파일로 저장"""
+    try:
+        # 현재 날짜와 시간으로 파일명 생성
+        now = get_today_kst()
+        timestamp = now.strftime('%Y%m%d_%H%M%S')
+        filename = f"{timestamp}_gsni.csv"
+        
+        # CSV 파일 경로 설정
+        csv_dir = "csv_data"
+        os.makedirs(csv_dir, exist_ok=True)
+        csv_path = os.path.join(csv_dir, filename)
+        
+        # CSV 파일 생성
+        with open(csv_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+            fieldnames = [
+                'date', 'original_title', 'parody_title', 'setup', 
+                'punchline', 'humor_lesson', 'disclaimer', 'source_url'
+            ]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            # 헤더 작성
+            writer.writeheader()
+            
+            # 데이터 작성
+            for parody_data in parody_data_list:
+                writer.writerow(parody_data)
+        
+        print(f"📄 CSV 파일 저장 완료: {csv_path}")
+        return csv_path
+        
+    except Exception as e:
+        print(f"❌ CSV 파일 저장 실패: {e}")
+        return None
+
+def upload_to_google_drive(csv_path, folder_id):
+    """CSV 파일을 Google Drive에 업로드"""
+    try:
+        # Google Drive API 인증
+        creds = None
+        token_path = 'youtube_uploader/token.json'
+        
+        if os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, 
+                ['https://www.googleapis.com/auth/drive.file'])
+        
+        if not creds:
+            print("⚠️ Google Drive 인증 파일을 찾을 수 없습니다.")
+            return None
+        
+        # Google Drive 서비스 생성
+        service = build('drive', 'v3', credentials=creds)
+        
+        # 파일 메타데이터 설정
+        file_metadata = {
+            'name': os.path.basename(csv_path),
+            'parents': [folder_id]
+        }
+        
+        # 파일 업로드
+        media = MediaFileUpload(csv_path, mimetype='text/csv', resumable=True)
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        
+        file_id = file.get('id')
+        file_url = f"https://drive.google.com/file/d/{file_id}/view"
+        
+        print(f"☁️ Google Drive 업로드 완료: {file_url}")
+        return file_url
+        
+    except Exception as e:
+        print(f"❌ Google Drive 업로드 실패: {e}")
+        return None
+
 def safe_api_call(client, messages, max_retries=3, base_delay=2):
     """API 호출을 안전하게 수행하는 함수 (재시도 로직 포함)"""
     for attempt in range(max_retries):
@@ -520,6 +601,25 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
         except Exception as e:
             print(f"\n[5/5] 구글 시트 저장 실패: {e}")
             print("💡 service_account.json 파일이 필요합니다.")
+        
+        # CSV 파일 저장
+        csv_path = save_to_csv(parody_data_list)
+        if csv_path:
+            print(f"📄 CSV 파일이 생성되었습니다: {csv_path}")
+            print(f"📁 파일 경로: {os.path.abspath(csv_path)}")
+            
+            # Google Drive 업로드 시도
+            google_drive_folder_id = "1dpMzrdIl5iL8gmkrxwtiWBCOiMgU-toG"
+            drive_url = upload_to_google_drive(csv_path, google_drive_folder_id)
+            if drive_url:
+                print(f"☁️ Google Drive 업로드 성공: {drive_url}")
+            else:
+                print("⚠️ Google Drive 업로드 실패 (로컬 CSV 파일은 생성됨)")
+        else:
+            print("❌ CSV 파일 생성에 실패했습니다.")
+        
+        # 구글 시트 저장 실패 시 콘솔에 데이터 출력
+        if not csv_path:
             print("📋 생성된 패러디 데이터:")
             for i, data in enumerate(parody_data_list, 1):
                 print(f"\n--- 패러디 {i} ---")
