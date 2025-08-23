@@ -290,6 +290,20 @@ def save_to_csv(parody_data_list):
         os.makedirs(csv_dir, exist_ok=True)
         csv_path = os.path.join(csv_dir, filename)
         
+        # GitHub Actions 환경에서 기존 CSV 파일 정리 (최신 1개만 유지)
+        if os.getenv('GITHUB_ACTIONS'):
+            print("🔧 GitHub Actions 환경에서 CSV 파일 정리 중...")
+            csv_files = glob.glob(os.path.join(csv_dir, '*.csv'))
+            if len(csv_files) > 0:
+                # 가장 최근 파일을 제외한 나머지 삭제
+                csv_files_sorted = sorted(csv_files, key=os.path.getmtime, reverse=True)
+                for old_file in csv_files_sorted[1:]:  # 최신 파일 제외
+                    try:
+                        os.remove(old_file)
+                        print(f"   - 기존 CSV 파일 삭제: {os.path.basename(old_file)}")
+                    except Exception as e:
+                        print(f"   - 파일 삭제 실패: {os.path.basename(old_file)} ({e})")
+        
         # CSV 파일 생성
         with open(csv_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
             fieldnames = [

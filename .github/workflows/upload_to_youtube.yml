@@ -82,6 +82,33 @@ jobs:
             echo "⚠️ parody_video 디렉토리가 없습니다."
           fi
 
+      - name: 🧹 Clean up old CSV files
+        run: |
+          echo "🧹 오래된 CSV 파일 정리 중..."
+          if [ -d "csv_data" ]; then
+            # 가장 최근 CSV 파일 찾기
+            latest_csv=$(find csv_data -name "*.csv" -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+            
+            if [ -n "$latest_csv" ]; then
+              echo "📄 최신 CSV 파일 보존: $(basename "$latest_csv")"
+              
+              # 오래된 CSV 파일들 삭제
+              deleted_count=0
+              for csv_file in csv_data/*.csv; do
+                if [ -f "$csv_file" ] && [ "$csv_file" != "$latest_csv" ]; then
+                  echo "🗑️ 삭제: $(basename "$csv_file")"
+                  rm "$csv_file"
+                  deleted_count=$((deleted_count + 1))
+                fi
+              done
+              echo "✅ CSV 정리 완료: $deleted_count개 파일 삭제됨"
+            else
+              echo "⚠️ csv_data 폴더에 CSV 파일이 없습니다."
+            fi
+          else
+            echo "⚠️ csv_data 디렉토리가 없습니다."
+          fi
+
       - name: 📝 Commit and push changes
         run: |
           echo "📝 변경사항 커밋 및 푸시 중..."
