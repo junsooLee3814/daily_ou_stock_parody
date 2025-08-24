@@ -376,7 +376,7 @@ def safe_api_call(client, messages, max_retries=3, base_delay=2):
     for attempt in range(max_retries):
         try:
             response = client.messages.create(
-                model="claude-3-5-sonnet-20240620",
+                model="claude-sonnet-4-20250514",
                 max_tokens=2000,
                 temperature=0.8,
                 system="",
