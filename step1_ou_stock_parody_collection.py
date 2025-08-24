@@ -14,6 +14,7 @@ from anthropic.types import MessageParam
 import csv
 import glob
 from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -332,16 +333,18 @@ def save_to_csv(parody_data_list):
 def upload_to_google_drive(csv_path, folder_id):
     """CSV 파일을 Google Drive에 업로드"""
     try:
-        # Google Drive API 인증
+        # Google Drive API 인증 (Service Account 사용)
         creds = None
-        token_path = 'youtube_uploader/token.json'
+        service_account_path = 'service_account.json'
         
-        if os.path.exists(token_path):
-            creds = Credentials.from_authorized_user_file(token_path, 
-                ['https://www.googleapis.com/auth/drive.file'])
-        
-        if not creds:
-            print("⚠️ Google Drive 인증 파일을 찾을 수 없습니다.")
+        if os.path.exists(service_account_path):
+            from google.oauth2 import service_account
+            SCOPES = ['https://www.googleapis.com/auth/drive.file']
+            creds = service_account.Credentials.from_service_account_file(
+                service_account_path, scopes=SCOPES)
+            print("✅ Service Account 인증 성공")
+        else:
+            print("⚠️ service_account.json 파일을 찾을 수 없습니다.")
             return None
         
         # Google Drive 서비스 생성
