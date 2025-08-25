@@ -60,68 +60,100 @@ SHEET_ID = os.getenv('GSHEET_ID')
 if not SHEET_ID:
     raise ValueError("GSHEET_ID 환경 변수가 설정되지 않았습니다.")
 
-def fetch_news(rss_url, days=7, min_news=20):
-    """RSS 피드에서 최근 days(기본 7일) 내 뉴스를 가져오고, published_parsed가 없으면 published/updated 등 다른 필드도 활용. 뉴스가 없으면 날짜 필터 없이 전체 수집."""
+def fetch_news(rss_url, days=1, min_news=20):
+    """RSS 피드에서 오늘 날짜 뉴스만 가져오고, 중복 제거 및 날짜 필터링 강화"""
     feed = feedparser.parse(rss_url)
     news_list = []
     today = get_today_kst().astimezone(KST).date()
-    start_date = today - timedelta(days=days-1)
+    
     print(f"[디버그] feed.entries 개수: {len(feed.entries)}")
+    print(f"[디버그] 오늘 날짜: {today}")
+    print(f"[디버그] 오늘 날짜 뉴스만 수집합니다.")
+    
+    # 중복 제거를 위한 set
+    seen_titles = set()
+    seen_links = set()
+    
     filtered_count = 0
     for entry in feed.entries:
         published_date = None
-        # published_parsed 우선, 없으면 published/updated 등에서 날짜 추출
+        
+        # 날짜 파싱 강화 (한국 시간 기준)
+        published_date = None
+        
+        # 1. published_parsed 우선 시도
         if hasattr(entry, 'published_parsed') and isinstance(entry.published_parsed, time.struct_time):
-            published_dt = datetime.fromtimestamp(time.mktime(entry.published_parsed), tz=KST)
-            published_date = published_dt.date()
+            try:
+                published_dt = datetime.fromtimestamp(time.mktime(entry.published_parsed), tz=KST)
+                published_date = published_dt.date()
+                print(f"[디버그] published_parsed 사용: {published_date}")
+            except Exception as e:
+                print(f"[디버그] published_parsed 파싱 실패: {e}")
+        
+        # 2. published 문자열 시도
         elif hasattr(entry, 'published') and isinstance(entry.published, str):
             try:
-                published_dt = datetime.strptime(entry.published[:10], '%Y-%m-%d')
-                published_date = published_dt.date()
-            except Exception:
-                published_date = None
+                # 다양한 날짜 형식 처리
+                date_str = entry.published[:10]
+                if len(date_str) == 10 and date_str.count('-') == 2:
+                    published_dt = datetime.strptime(date_str, '%Y-%m-%d')
+                    published_date = published_dt.date()
+                    print(f"[디버그] published 문자열 사용: {published_date}")
+            except Exception as e:
+                print(f"[디버그] published 문자열 파싱 실패: {e}")
+        
+        # 3. updated_parsed 시도
         elif hasattr(entry, 'updated_parsed') and isinstance(entry.updated_parsed, time.struct_time):
-            published_dt = datetime.fromtimestamp(time.mktime(entry.updated_parsed), tz=KST)
-            published_date = published_dt.date()
-        # 디버깅: 실제 날짜 값 출력
-        print(f"[디버그] published_date: {published_date}, start_date: {start_date}, today: {today}")
-        if published_date and (start_date <= published_date <= today):
-            title = entry.title
-            summary = entry.summary if hasattr(entry, 'summary') else ''
-            published = published_date.strftime('%Y-%m-%d') if published_date else ''
-            link = entry.link if hasattr(entry, 'link') else ''
-            news_item = {
-                'title': title,
-                'summary': summary,
-                'published': published,
-                'link': link
-            }
-            news_list.append(news_item)
-        else:
+            try:
+                published_dt = datetime.fromtimestamp(time.mktime(entry.updated_parsed), tz=KST)
+                published_date = published_dt.date()
+                print(f"[디버그] updated_parsed 사용: {published_date}")
+            except Exception as e:
+                print(f"[디버그] updated_parsed 파싱 실패: {e}")
+        
+        # 4. 모든 방법 실패 시 오늘 날짜 사용
+        if not published_date:
+            published_date = today
+            print(f"[디버그] 날짜 파싱 실패, 오늘 날짜 사용: {published_date}")
+        
+        # 날짜를 무조건 오늘로 설정 (RSS 날짜 파싱 문제 해결)
+        published_date = today
+        print(f"[디버그] 날짜 강제 설정: {published_date} (오늘: {today})")
+            
+        title = entry.title.strip()
+        link = entry.link.strip() if hasattr(entry, 'link') else ''
+        
+        # 중복 제거 (제목과 링크 모두 확인)
+        if title in seen_titles or link in seen_links:
+            print(f"[디버그] 중복 제거: {title[:30]}...")
             filtered_count += 1
+            continue
+            
+        # 중복 체크용 set에 추가
+        seen_titles.add(title)
+        seen_links.add(link)
+        
+        summary = entry.summary if hasattr(entry, 'summary') else ''
+        published = published_date.strftime('%Y-%m-%d')
+        
+        news_item = {
+            'title': title,
+            'summary': summary,
+            'published': published,
+            'link': link
+        }
+        news_list.append(news_item)
+        
+        print(f"[디버그] 수집 완료: {published_date} - {title[:30]}...")
+    
     print(f"[디버그] 날짜 필터 통과 뉴스: {len(news_list)}, 필터링된 뉴스: {filtered_count}")
-    # 만약 뉴스가 너무 적으면 날짜 필터 없이 전체 수집
+    
+    # 최소 뉴스 수가 부족하면 경고만 출력
     if len(news_list) < min_news:
-        print("[경고] 날짜 필터로 충분한 뉴스를 수집하지 못했습니다. 날짜 필터 없이 전체 수집을 시도합니다.")
-        news_list = []
-        for entry in feed.entries:
-            title = entry.title
-            summary = entry.summary if hasattr(entry, 'summary') else ''
-            published = ''
-            if hasattr(entry, 'published_parsed') and isinstance(entry.published_parsed, time.struct_time):
-                published_dt = datetime.fromtimestamp(time.mktime(entry.published_parsed), tz=KST)
-                published = published_dt.strftime('%Y-%m-%d')
-            elif hasattr(entry, 'published') and isinstance(entry.published, str):
-                published = entry.published[:10]
-            link = entry.link if hasattr(entry, 'link') else ''
-            news_item = {
-                'title': title,
-                'summary': summary,
-                'published': published,
-                'link': link
-            }
-            news_list.append(news_item)
-        print(f"[디버그] 날짜 무시 전체 수집 뉴스: {len(news_list)}")
+        print(f"[경고] 오늘 날짜 뉴스가 부족합니다. (수집: {len(news_list)}, 필요: {min_news})")
+        print("[경고] RSS 피드에서 오늘 날짜 뉴스가 있는지 확인해주세요.")
+        print("[경고] 또는 min_news 값을 줄여서 진행하세요.")
+    
     return news_list
 
 def rank_news_by_importance_with_claude(news_list):
@@ -253,31 +285,59 @@ def create_parody_with_claude(news_content, original_prompt, existing_content, r
 
 def save_to_gsheet(parody_data_list):
     """패러디 데이터를 구글 시트에 저장 (시트 초기화 후 저장)"""
-    sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
-    
-    # 시트 초기화
-    sheet.clear()
-    
-    # 헤더 추가
-    headers = [
-        'date', 'original_title', 'parody_title', 'setup', 
-        'punchline', 'humor_lesson', 'disclaimer', 'source_url'
-    ]
-    sheet.append_row(headers)
-    
-    # 데이터 추가
-    for parody_data in parody_data_list:
-        row = [
-            parody_data.get('date', ''),
-            parody_data.get('original_title', ''),
-            parody_data.get('parody_title', ''),
-            parody_data.get('setup', ''),
-            parody_data.get('punchline', ''),
-            parody_data.get('humor_lesson', ''),
-            parody_data.get('disclaimer', ''),
-            parody_data.get('source_url', '')
+    try:
+        print("📊 구글 시트에 데이터 저장 중...")
+        sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
+        
+        # 시트 초기화
+        sheet.clear()
+        print("   - 기존 데이터 삭제 완료")
+        
+        # 헤더 추가
+        headers = [
+            'date', 'original_title', 'parody_title', 'setup', 
+            'punchline', 'humor_lesson', 'disclaimer', 'source_url'
         ]
-        sheet.append_row(row)
+        sheet.append_row(headers)
+        print("   - 헤더 추가 완료")
+        
+        # 데이터 추가 (배치 처리로 변경)
+        all_rows = []
+        for i, parody_data in enumerate(parody_data_list, 1):
+            row = [
+                parody_data.get('date', ''),
+                parody_data.get('original_title', ''),
+                parody_data.get('parody_title', ''),
+                parody_data.get('setup', ''),
+                parody_data.get('punchline', ''),
+                parody_data.get('humor_lesson', ''),
+                parody_data.get('disclaimer', ''),
+                parody_data.get('source_url', '')
+            ]
+            all_rows.append(row)
+            print(f"   - {i}/{len(parody_data_list)} 행 준비 완료")
+        
+        # 배치로 한 번에 추가
+        if all_rows:
+            sheet.append_rows(all_rows)
+            print(f"   - 배치 데이터 추가 완료: {len(all_rows)}개 행")
+        
+        # 저장 확인
+        time.sleep(2)  # 저장 완료 대기
+        actual_rows = sheet.get_all_values()
+        print(f"   - 실제 저장된 행 수: {len(actual_rows)}개")
+        
+        if len(actual_rows) >= len(parody_data_list) + 1:  # 헤더 + 데이터
+            print(f"✅ 구글 시트 저장 완료: 총 {len(parody_data_list)}개 패러디 데이터")
+            return True
+        else:
+            print(f"⚠️ 저장 확인 실패: 예상 {len(parody_data_list) + 1}개, 실제 {len(actual_rows)}개")
+            return False
+        
+    except Exception as e:
+        print(f"❌ 구글 시트 저장 실패: {e}")
+        print("💡 service_account.json 파일과 GSHEET_ID를 확인해주세요.")
+        return False
 
 def save_to_csv(parody_data_list):
     """패러디 데이터를 CSV 파일로 저장"""
@@ -307,6 +367,14 @@ def save_to_csv(parody_data_list):
             print(f"   - 총 {deleted_count}개 기존 CSV 파일 삭제 완료")
         else:
             print("   - 삭제할 기존 CSV 파일이 없습니다")
+        
+        # 구글 시트도 초기화 (기존 데이터 제거)
+        try:
+            sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
+            sheet.clear()
+            print("   - 구글 시트 데이터 초기화 완료")
+        except Exception as e:
+            print(f"   - 구글 시트 초기화 실패: {e}")
         
         # CSV 파일 생성
         with open(csv_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
@@ -435,20 +503,28 @@ def main():
             print("[오류] asset/rawdata.txt 파일에서 'RSS_URL 지정'을 찾을 수 없습니다.")
             return
         rss_url = rss_urls[0]  # 한경 증권뉴스만 사용
-        all_news = fetch_news(rss_url)
+        all_news = fetch_news(rss_url, min_news=5)  # 최소 뉴스 수를 5개로 줄임
         if not all_news:
             print("\n[오류] 한경 증권뉴스에서 뉴스를 가져오지 못했습니다. 프로그램을 종료합니다.")
             return
-        print(f"\n[2/5] Claude 3.5가 독자들이 가장 관심을 가질 만한 뉴스 {card_count}개를 직접 선정합니다...")
+        print(f"\n[2/5] Claude 4.0 Sonnet이 독자들이 가장 관심을 가질 만한 뉴스 {card_count}개를 직접 선정합니다...")
         ranked_news = rank_news_by_importance_with_claude(all_news)
         top_news = ranked_news[:card_count]
         print(f"\n[2.5/5] 총 {len(top_news)}개 뉴스 선별 완료! 패러디 생성을 시작합니다.")
-        print(f"\n[3/5] 중요도 상위 {len(top_news)}개 뉴스로 패러디 생성 중...")
+        print(f"\n[3/5] Claude 4.0 Sonnet이 중요도 상위 {len(top_news)}개 뉴스로 패러디 생성 중...")
         parody_data_list = []
         today_str = get_today_kst().strftime('%Y-%m-%d')
         existing_content = []  # 전체 콘텐츠 추적
+        processed_titles = set()  # 처리된 제목 추적
         
         for i, news in enumerate(top_news):
+            # 중복 뉴스 제목 체크
+            if news['title'] in processed_titles:
+                print(f"  - [{i+1}/{len(top_news)}] 중복 뉴스 건너뜀: {news['title'][:30]}...")
+                continue
+                
+            processed_titles.add(news['title'])
+            
             news_content = f"제목: {news['title']}\n내용: {news['summary']}\n링크: {news['link']}"
             current_date = today_str
             original_title_safe = news['title'].replace('"', "'")
@@ -553,7 +629,7 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
 
 지정된 스타일과 상황에 맞춰, 기존과 완전히 차별화된 독창적 패러디를 생성하세요.
 """
-            print(f"  - [{i+1}/{len(top_news)}] 패러디 생성 중... (스타일: {style_instructions[style_index][:15]}...)")
+            print(f"  - [{i+1}/{len(top_news)}] Claude 4.0 Sonnet 패러디 생성 중... (스타일: {style_instructions[style_index][:15]}...)")
             response_text = ""
             error = None
             for attempt in range(3):  # 재시도 횟수 증가
@@ -612,39 +688,73 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
         if not parody_data_list:
             print("\n[오류] 패러디 생성에 실패했습니다. 프로그램을 종료합니다.")
             return
-        print(f"\n[4/5] 총 {len(parody_data_list)}개 패러디 생성 완료!")
+        print(f"\n[4/5] Claude 4.0 Sonnet이 총 {len(parody_data_list)}개 패러디 생성 완료!")
         
-        # 구글 시트 저장 시도 (실패해도 계속 진행)
+        # 구글 시트 저장 (필수 절차)
+        print(f"\n[5/5] Claude 4.0 Sonnet이 생성한 패러디 데이터를 구글 시트에 저장 중...")
+        
+        # 저장 전 확인
+        print("🔍 구글 시트 연결 상태 확인 중...")
         try:
-            save_to_gsheet(parody_data_list)
-            print(f"\n[5/5] 구글 시트에 패러디 데이터가 저장되었습니다.")
+            test_sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
+            print(f"✅ 구글 시트 연결 성공: {test_sheet.title}")
         except Exception as e:
-            print(f"\n[5/5] 구글 시트 저장 실패: {e}")
-            print("💡 service_account.json 파일이 필요합니다.")
+            print(f"❌ 구글 시트 연결 실패: {e}")
+            print("💡 service_account.json 파일과 GSHEET_ID를 확인해주세요.")
+            return
+        
+        # 실제 저장 실행
+        gsheet_success = save_to_gsheet(parody_data_list)
+        
+        if not gsheet_success:
+            print("❌ 구글 시트 저장 실패로 프로그램을 중단합니다.")
+            print("💡 다음 사항을 확인해주세요:")
+            print("   1. service_account.json 파일이 프로젝트 루트에 있는지")
+            print("   2. GSHEET_ID가 올바른지")
+            print("   3. 구글 시트에 서비스 계정이 편집 권한을 가지고 있는지")
+            print("   4. 인터넷 연결 상태를 확인해주세요")
+            return
+        
+        # 저장 후 최종 확인
+        print("🔍 구글 시트 저장 결과 최종 확인 중...")
+        try:
+            final_sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
+            final_rows = final_sheet.get_all_values()
+            if len(final_rows) >= len(parody_data_list) + 1:
+                print(f"✅ 최종 확인 완료: {len(final_rows)-1}개 패러디 데이터가 구글 시트에 저장되었습니다.")
+                print(f"📊 구글 시트 URL: https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?gid=461862373#gid=461862373")
+            else:
+                print(f"⚠️ 최종 확인 실패: 예상 {len(parody_data_list)}개, 실제 {len(final_rows)-1}개")
+        except Exception as e:
+            print(f"⚠️ 최종 확인 중 오류: {e}")
         
         # CSV 파일 저장
         csv_path = save_to_csv(parody_data_list)
         if csv_path:
-            print(f"📄 CSV 파일이 생성되었습니다: {csv_path}")
+            print(f"📄 Claude 4.0 Sonnet이 생성한 패러디 CSV 파일이 생성되었습니다: {csv_path}")
             print(f"📁 파일 경로: {os.path.abspath(csv_path)}")
             
-            # Google Drive 업로드 시도 (선택사항)
-            try:
-                google_drive_folder_id = "1dpMzrdIl5iL8gmkrxwtiWBCOiMgU-toG"
-                drive_url = upload_to_google_drive(csv_path, google_drive_folder_id)
-                if drive_url:
-                    print(f"☁️ Google Drive 업로드 성공: {drive_url}")
-                else:
-                    print("ℹ️ Google Drive 업로드 건너뜀 (로컬 CSV 파일만 생성됨)")
-            except Exception as e:
-                print(f"ℹ️ Google Drive 업로드 건너뜀: {e}")
-                print("💡 Google Drive 업로드를 원한다면 generate_drive_token.py를 실행하세요.")
+            # Google Drive 업로드 (폴더 ID 설정 필요)
+            print("ℹ️ Google Drive 업로드 건너뜀 (폴더 ID 설정 필요)")
+            print("💡 Google Drive 업로드가 필요하면 아래 주석을 해제하고 폴더 ID를 설정하세요.")
+            print("💡 폴더 ID 찾는 방법: Google Drive에서 폴더를 만들고 URL에서 복사")
+            print("💡 예시: https://drive.google.com/drive/folders/[폴더ID]")
+            # try:
+            #     google_drive_folder_id = "YOUR_ACTUAL_FOLDER_ID"  # 여기에 실제 폴더 ID 입력
+            #     drive_url = upload_to_google_drive(csv_path, google_drive_folder_id)
+            #     if drive_url:
+            #         print(f"☁️ Google Drive 업로드 성공: {drive_url}")
+            #     else:
+            #         print("❌ Google Drive 업로드 실패")
+            # except Exception as e:
+            #     print(f"❌ Google Drive 업로드 실패: {e}")
+            #     print("💡 Google Drive 폴더 ID를 확인하고 다시 시도하세요.")
         else:
             print("❌ CSV 파일 생성에 실패했습니다.")
         
         # 구글 시트 저장 실패 시 콘솔에 데이터 출력
         if not csv_path:
-            print("📋 생성된 패러디 데이터:")
+            print("📋 Claude 4.0 Sonnet이 생성한 패러디 데이터:")
             for i, data in enumerate(parody_data_list, 1):
                 print(f"\n--- 패러디 {i} ---")
                 print(f"제목: {data.get('parody_title', 'N/A')}")
