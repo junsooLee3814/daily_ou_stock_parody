@@ -55,7 +55,7 @@ def parse_rawdata(file_path='asset/rawdata.txt'):
     return config
 
 # 구글 시트 설정
-SHEET_NAME = 'today_stock_parody'
+SHEET_NAME = 'today_stock_parody_wb'  # 파일명 변경
 SHEET_ID = os.getenv('GSHEET_ID')
 if not SHEET_ID:
     raise ValueError("GSHEET_ID 환경 변수가 설정되지 않았습니다.")
@@ -287,7 +287,7 @@ def save_to_gsheet(parody_data_list):
     """패러디 데이터를 구글 시트에 저장 (시트 초기화 후 저장)"""
     try:
         print("📊 구글 시트에 데이터 저장 중...")
-        sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
+        sheet = get_gsheet(SHEET_ID)  # 기본 시트 사용
         
         # 시트 초기화
         sheet.clear()
@@ -368,13 +368,7 @@ def save_to_csv(parody_data_list):
         else:
             print("   - 삭제할 기존 CSV 파일이 없습니다")
         
-        # 구글 시트도 초기화 (기존 데이터 제거)
-        try:
-            sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
-            sheet.clear()
-            print("   - 구글 시트 데이터 초기화 완료")
-        except Exception as e:
-            print(f"   - 구글 시트 초기화 실패: {e}")
+        # 구글 시트 초기화는 save_to_gsheet 함수에서 처리
         
         # CSV 파일 생성
         with open(csv_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
@@ -656,12 +650,14 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
                         if start_index != -1 and end_index != -1 and start_index < end_index:
                             json_text = response_text[start_index:end_index+1]
                         else:
-                            # JSON이 없는 경우 기본 구조 생성
+                            # JSON이 없는 경우 기본 구조 생성 (날짜는 오늘 날짜로 강제 설정)
                             json_text = f'{{"date": "{current_date}", "original_title": "{original_title_safe}", "parody_title": "API 오류로 인한 기본 제목", "setup": "API 호출 중 오류가 발생했습니다.", "punchline": "다시 시도해주세요.", "humor_lesson": "API 서버가 과부하 상태일 수 있습니다.", "disclaimer": "면책조항:패러디/특정기관,개인과 무관/투자조언아님/재미목적", "source_url": "{news_link}"}}'
                     else:
                         json_text = json_match.group(1)
                     
                     parody_data = json.loads(json_text)
+                    # 날짜를 강제로 오늘 날짜로 설정 (수집 일자 통일)
+                    parody_data['date'] = current_date
                     parody_data_list.append(parody_data)
                     existing_content.append(parody_data)  # 전체 콘텐츠 추가
                     print("    - 성공!")
@@ -671,9 +667,9 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
                     print(f"    ! 패러디 생성 실패 (시도 {attempt + 1}/3): {e}")
                     if attempt == 2:  # 마지막 시도
                         print(f"    - 최종 실패: {e}")
-                        # 기본 패러디 데이터 생성
+                        # 기본 패러디 데이터 생성 (날짜는 오늘 날짜로 강제 설정)
                         default_parody = {
-                            'date': current_date,
+                            'date': current_date,  # 수집 일자 (오늘)
                             'original_title': original_title_safe,
                             'parody_title': f"API 오류 - {news_title[:20]}...",
                             'setup': "API 서버 과부하로 인한 기본 설정",
@@ -696,7 +692,7 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
         # 저장 전 확인
         print("🔍 구글 시트 연결 상태 확인 중...")
         try:
-            test_sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
+            test_sheet = get_gsheet(SHEET_ID)  # 기본 시트 사용
             print(f"✅ 구글 시트 연결 성공: {test_sheet.title}")
         except Exception as e:
             print(f"❌ 구글 시트 연결 실패: {e}")
@@ -718,7 +714,7 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
         # 저장 후 최종 확인
         print("🔍 구글 시트 저장 결과 최종 확인 중...")
         try:
-            final_sheet = get_gsheet(SHEET_ID, 'today_stock_parody')
+            final_sheet = get_gsheet(SHEET_ID)  # 기본 시트 사용
             final_rows = final_sheet.get_all_values()
             if len(final_rows) >= len(parody_data_list) + 1:
                 print(f"✅ 최종 확인 완료: {len(final_rows)-1}개 패러디 데이터가 구글 시트에 저장되었습니다.")
