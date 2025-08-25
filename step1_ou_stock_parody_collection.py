@@ -724,27 +724,12 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
         except Exception as e:
             print(f"⚠️ 최종 확인 중 오류: {e}")
         
-        # CSV 파일 저장
+        # CSV 파일 저장 (로컬만, Google Drive 업로드 안함)
         csv_path = save_to_csv(parody_data_list)
         if csv_path:
             print(f"📄 Claude 4.0 Sonnet이 생성한 패러디 CSV 파일이 생성되었습니다: {csv_path}")
             print(f"📁 파일 경로: {os.path.abspath(csv_path)}")
-            
-            # Google Drive 업로드 (폴더 ID 설정 필요)
-            print("ℹ️ Google Drive 업로드 건너뜀 (폴더 ID 설정 필요)")
-            print("💡 Google Drive 업로드가 필요하면 아래 주석을 해제하고 폴더 ID를 설정하세요.")
-            print("💡 폴더 ID 찾는 방법: Google Drive에서 폴더를 만들고 URL에서 복사")
-            print("💡 예시: https://drive.google.com/drive/folders/[폴더ID]")
-            # try:
-            #     google_drive_folder_id = "YOUR_ACTUAL_FOLDER_ID"  # 여기에 실제 폴더 ID 입력
-            #     drive_url = upload_to_google_drive(csv_path, google_drive_folder_id)
-            #     if drive_url:
-            #         print(f"☁️ Google Drive 업로드 성공: {drive_url}")
-            #     else:
-            #         print("❌ Google Drive 업로드 실패")
-            # except Exception as e:
-            #     print(f"❌ Google Drive 업로드 실패: {e}")
-            #     print("💡 Google Drive 폴더 ID를 확인하고 다시 시도하세요.")
+            print("ℹ️ CSV 파일은 로컬에만 저장됩니다. (Google Drive 업로드 건너뜀)")
         else:
             print("❌ CSV 파일 생성에 실패했습니다.")
         
