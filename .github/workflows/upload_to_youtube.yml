@@ -2,8 +2,8 @@ name: YouTube Upload (OU Stock Parody)
 
 on:
   schedule:
-      # 매일 오전 6:30 KST (전날 21:30 UTC)에 실행
-    - cron: '30 21 * * *'
+      # 매일 오전 5:30 KST (전날 20:30 UTC)에 실행
+    - cron: '30 20 * * *'
   workflow_dispatch:
 
 jobs:
