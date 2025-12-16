@@ -4,8 +4,8 @@ name: OU Stock Parody Video Generation
 
 on:
   schedule:
-    # 매일 오전 5시 KST (전날 20:00 UTC)에 실행
-    - cron: '0 20 * * *'
+    # 매일 오전 4시 KST (전날 19:00 UTC)에 실행
+    - cron: '0 19 * * *'
   # 수동 실행을 위한 workflow_dispatch 추가
   workflow_dispatch:
 
