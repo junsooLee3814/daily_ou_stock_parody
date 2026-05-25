@@ -1,8 +1,7 @@
 import os
 import feedparser
 from datetime import datetime, timedelta
-from anthropic import Anthropic
-from anthropic._exceptions import OverloadedError, RateLimitError, APIError
+from anthropic import Anthropic, APIStatusError
 from dotenv import load_dotenv
 from common_utils import get_gsheet, get_today_kst
 import json
@@ -448,18 +447,12 @@ def safe_api_call(client, messages, max_retries=3, base_delay=2):
                 messages=messages
             )
             return response
-        except OverloadedError as e:
-            if attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)  # 지수 백오프
-                print(f"  ! API 과부하 오류 (시도 {attempt + 1}/{max_retries}). {delay}초 후 재시도...")
-                time.sleep(delay)
-            else:
-                print(f"  ! 최대 재시도 횟수 초과. API 과부하로 인한 실패.")
-                raise e
-        except (RateLimitError, APIError) as e:
+        except APIStatusError as e:
+            # 529 = 과부하(Overloaded), 429 = Rate Limit 등 재시도 가능 오류
             if attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
-                print(f"  ! API 오류 (시도 {attempt + 1}/{max_retries}). {delay}초 후 재시도...")
+                msg = "API 과부하" if getattr(e, "status_code", None) == 529 else "API 오류"
+                print(f"  ! {msg} (시도 {attempt + 1}/{max_retries}). {delay}초 후 재시도...")
                 time.sleep(delay)
             else:
                 print(f"  ! 최대 재시도 횟수 초과. API 오류로 인한 실패.")
