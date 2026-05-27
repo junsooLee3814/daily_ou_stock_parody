@@ -1,5 +1,7 @@
 import os
+import sys
 import feedparser
+import requests
 from datetime import datetime, timedelta
 from anthropic import Anthropic, APIStatusError
 from dotenv import load_dotenv
@@ -53,21 +55,80 @@ def parse_rawdata(file_path='asset/rawdata.txt'):
         print(f"설정 파일({file_path})을 찾을 수 없습니다. 기본값으로 진행합니다.")
     return config
 
-# 구글 시트 설정
-SHEET_NAME = 'today_stock_parody_wb'  # 파일명 변경
+# 구글 시트 설정 (step2·youtube_uploader와 동일 탭)
+WORKSHEET_NAME = 'today_stock_parody'
 SHEET_ID = os.getenv('GSHEET_ID')
 if not SHEET_ID:
     raise ValueError("GSHEET_ID 환경 변수가 설정되지 않았습니다.")
 
+RSS_USER_AGENT = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/120.0.0.0 Safari/537.36'
+)
+
+
+def fetch_rss_feed(rss_url, max_retries=3):
+    """연합뉴스 RSS를 브라우저 UA로 가져와 파싱 (GitHub Actions·로컬 공통)"""
+    headers = {
+        'User-Agent': RSS_USER_AGENT,
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+    }
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            resp = requests.get(rss_url, headers=headers, timeout=30)
+            size = len(resp.content)
+            print(f"[RSS] 시도 {attempt + 1}/{max_retries}: HTTP {resp.status_code}, {size} bytes")
+
+            if resp.status_code != 200:
+                last_error = f"HTTP {resp.status_code}"
+                time.sleep(2 ** attempt)
+                continue
+
+            sample = resp.content[:8000].lower()
+            if b'<rss' not in sample and b'<item' not in sample:
+                preview = resp.text[:120].replace('\n', ' ')
+                print(f"[RSS] RSS XML이 아닌 응답 가능: {preview}")
+                last_error = 'RSS XML 형식 아님'
+                time.sleep(2 ** attempt)
+                continue
+
+            resp.encoding = resp.apparent_encoding or 'utf-8'
+            feed = feedparser.parse(resp.content)
+            print(f"[RSS] 파싱: entries={len(feed.entries)}, bozo={feed.bozo}")
+            if feed.bozo:
+                print(f"[RSS] 파싱 경고: {feed.bozo_exception}")
+            if feed.entries:
+                return feed
+            last_error = 'entries 0건'
+        except requests.RequestException as e:
+            last_error = str(e)
+            print(f"[RSS] 요청 오류: {e}")
+
+        if attempt < max_retries - 1:
+            delay = 2 ** attempt
+            print(f"[RSS] {delay}초 후 재시도...")
+            time.sleep(delay)
+
+    print("[RSS] requests 실패, feedparser(agent=UA) 폴백 시도...")
+    feed = feedparser.parse(rss_url, agent=RSS_USER_AGENT)
+    print(f"[RSS] 폴백 파싱: entries={len(feed.entries)}, bozo={feed.bozo}")
+    if not feed.entries:
+        raise RuntimeError(f"RSS 수집 실패: {last_error or '알 수 없음'}")
+    return feed
+
+
 def fetch_news(rss_url, days=1, min_news=20):
-    """RSS 피드에서 오늘 날짜 뉴스만 가져오고, 중복 제거 및 날짜 필터링 강화"""
-    feed = feedparser.parse(rss_url)
+    """RSS 피드에서 뉴스를 가져오고 중복 제거"""
+    feed = fetch_rss_feed(rss_url)
     news_list = []
     today = get_today_kst().astimezone(KST).date()
     
     print(f"[디버그] feed.entries 개수: {len(feed.entries)}")
-    print(f"[디버그] 오늘 날짜: {today}")
-    print(f"[디버그] 오늘 날짜 뉴스만 수집합니다.")
+    print(f"[디버그] 수집 기준일(KST): {today}")
     
     # 중복 제거를 위한 set
     seen_titles = set()
@@ -75,50 +136,9 @@ def fetch_news(rss_url, days=1, min_news=20):
     
     filtered_count = 0
     for entry in feed.entries:
-        published_date = None
-        
-        # 날짜 파싱 강화 (한국 시간 기준)
-        published_date = None
-        
-        # 1. published_parsed 우선 시도
-        if hasattr(entry, 'published_parsed') and isinstance(entry.published_parsed, time.struct_time):
-            try:
-                published_dt = datetime.fromtimestamp(time.mktime(entry.published_parsed), tz=KST)
-                published_date = published_dt.date()
-                print(f"[디버그] published_parsed 사용: {published_date}")
-            except Exception as e:
-                print(f"[디버그] published_parsed 파싱 실패: {e}")
-        
-        # 2. published 문자열 시도
-        elif hasattr(entry, 'published') and isinstance(entry.published, str):
-            try:
-                # 다양한 날짜 형식 처리
-                date_str = entry.published[:10]
-                if len(date_str) == 10 and date_str.count('-') == 2:
-                    published_dt = datetime.strptime(date_str, '%Y-%m-%d')
-                    published_date = published_dt.date()
-                    print(f"[디버그] published 문자열 사용: {published_date}")
-            except Exception as e:
-                print(f"[디버그] published 문자열 파싱 실패: {e}")
-        
-        # 3. updated_parsed 시도
-        elif hasattr(entry, 'updated_parsed') and isinstance(entry.updated_parsed, time.struct_time):
-            try:
-                published_dt = datetime.fromtimestamp(time.mktime(entry.updated_parsed), tz=KST)
-                published_date = published_dt.date()
-                print(f"[디버그] updated_parsed 사용: {published_date}")
-            except Exception as e:
-                print(f"[디버그] updated_parsed 파싱 실패: {e}")
-        
-        # 4. 모든 방법 실패 시 오늘 날짜 사용
-        if not published_date:
-            published_date = today
-            print(f"[디버그] 날짜 파싱 실패, 오늘 날짜 사용: {published_date}")
-        
-        # 날짜를 무조건 오늘로 설정 (RSS 날짜 파싱 문제 해결)
+        # 수집·시트 기록일은 실행일(KST)로 통일
         published_date = today
-        print(f"[디버그] 날짜 강제 설정: {published_date} (오늘: {today})")
-            
+
         title = entry.title.strip()
         link = entry.link.strip() if hasattr(entry, 'link') else ''
         
@@ -142,10 +162,8 @@ def fetch_news(rss_url, days=1, min_news=20):
             'link': link
         }
         news_list.append(news_item)
-        
-        print(f"[디버그] 수집 완료: {published_date} - {title[:30]}...")
     
-    print(f"[디버그] 날짜 필터 통과 뉴스: {len(news_list)}, 필터링된 뉴스: {filtered_count}")
+    print(f"[디버그] 수집 뉴스: {len(news_list)}건, 중복 제외: {filtered_count}건")
     
     # 최소 뉴스 수가 부족하면 경고만 출력
     if len(news_list) < min_news:
@@ -286,7 +304,7 @@ def save_to_gsheet(parody_data_list):
     """패러디 데이터를 구글 시트에 저장 (시트 초기화 후 저장)"""
     try:
         print("📊 구글 시트에 데이터 저장 중...")
-        sheet = get_gsheet(SHEET_ID)  # 기본 시트 사용
+        sheet = get_gsheet(SHEET_ID, WORKSHEET_NAME)
         
         # 시트 초기화
         sheet.clear()
@@ -463,11 +481,11 @@ def safe_api_call(client, messages, max_retries=3, base_delay=2):
 
 def main():
     try:
-        print("[1/5] 한경 증권뉴스만 중요도 순으로 뉴스 선별 중...")
+        print("[1/5] 연합뉴스 증권 RSS에서 중요도 순으로 뉴스 선별 중...")
         raw_config = parse_rawdata()
         if not raw_config:
             print("[오류] 설정 파일(asset/rawdata.txt)을 읽을 수 없습니다. 프로그램을 종료합니다.")
-            return
+            sys.exit(1)
         
         # 카드뉴스 개수 설정 가져오기
         card_count_config = raw_config.get('카드뉴스개수', ['카드뉴스 개수 : 최대 20개.'])
@@ -488,12 +506,16 @@ def main():
             rss_urls = [rss_urls]
         if not rss_urls:
             print("[오류] asset/rawdata.txt 파일에서 'RSS_URL 지정'을 찾을 수 없습니다.")
-            return
-        rss_url = rss_urls[0]  # 한경 증권뉴스만 사용
-        all_news = fetch_news(rss_url, min_news=5)  # 최소 뉴스 수를 5개로 줄임
+            sys.exit(1)
+        rss_url = rss_urls[0]  # 연합뉴스 증권 RSS
+        try:
+            all_news = fetch_news(rss_url, min_news=5)
+        except RuntimeError as e:
+            print(f"\n[오류] 연합뉴스 RSS 수집 실패: {e}")
+            sys.exit(1)
         if not all_news:
-            print("\n[오류] 한경 증권뉴스에서 뉴스를 가져오지 못했습니다. 프로그램을 종료합니다.")
-            return
+            print("\n[오류] 연합뉴스 RSS에서 뉴스를 가져오지 못했습니다. 프로그램을 종료합니다.")
+            sys.exit(1)
         print(f"\n[2/5] Claude 4.0 Sonnet이 독자들이 가장 관심을 가질 만한 뉴스 {card_count}개를 직접 선정합니다...")
         ranked_news = rank_news_by_importance_with_claude(all_news)
         top_news = ranked_news[:card_count]
@@ -676,7 +698,7 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
                         print("    - 기본 패러디 데이터로 대체")
         if not parody_data_list:
             print("\n[오류] 패러디 생성에 실패했습니다. 프로그램을 종료합니다.")
-            return
+            sys.exit(1)
         print(f"\n[4/5] Claude 4.0 Sonnet이 총 {len(parody_data_list)}개 패러디 생성 완료!")
         
         # 구글 시트 저장 (필수 절차)
@@ -685,12 +707,12 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
         # 저장 전 확인
         print("🔍 구글 시트 연결 상태 확인 중...")
         try:
-            test_sheet = get_gsheet(SHEET_ID)  # 기본 시트 사용
-            print(f"✅ 구글 시트 연결 성공: {test_sheet.title}")
+            test_sheet = get_gsheet(SHEET_ID, WORKSHEET_NAME)
+            print(f"✅ 구글 시트 연결 성공: {test_sheet.title} (탭: {WORKSHEET_NAME})")
         except Exception as e:
             print(f"❌ 구글 시트 연결 실패: {e}")
             print("💡 service_account.json 파일과 GSHEET_ID를 확인해주세요.")
-            return
+            sys.exit(1)
         
         # 실제 저장 실행
         gsheet_success = save_to_gsheet(parody_data_list)
@@ -702,12 +724,12 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
             print("   2. GSHEET_ID가 올바른지")
             print("   3. 구글 시트에 서비스 계정이 편집 권한을 가지고 있는지")
             print("   4. 인터넷 연결 상태를 확인해주세요")
-            return
+            sys.exit(1)
         
         # 저장 후 최종 확인
         print("🔍 구글 시트 저장 결과 최종 확인 중...")
         try:
-            final_sheet = get_gsheet(SHEET_ID)  # 기본 시트 사용
+            final_sheet = get_gsheet(SHEET_ID, WORKSHEET_NAME)
             final_rows = final_sheet.get_all_values()
             if len(final_rows) >= len(parody_data_list) + 1:
                 print(f"✅ 최종 확인 완료: {len(final_rows)-1}개 패러디 데이터가 구글 시트에 저장되었습니다.")
@@ -741,6 +763,7 @@ Punchline: "나: (속마음) '이제 월급보다 주식이 더 중요해...'"
     except Exception as e:
         print(f"\n[치명적 오류] 프로그램 실행 중 예상치 못한 오류가 발생했습니다: {e}")
         print("프로그램을 종료합니다.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
