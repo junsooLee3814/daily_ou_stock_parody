@@ -3,10 +3,11 @@
 name: OU Stock Parody Video Generation
 
 on:
-  schedule:
-    # 매일 오전 4시 KST (전날 19:00 UTC)에 실행
-    - cron: '0 19 * * *'
-  # 수동 실행을 위한 workflow_dispatch 추가
+  # ⏸️ 스케줄 자동 실행 중지됨. 재개하려면 아래 schedule 3줄의 주석(#)을 풀고 push하세요.
+  # schedule:
+  #   # 매일 오전 4시 KST (전날 19:00 UTC)에 실행
+  #   - cron: '0 19 * * *'
+  # 수동 실행을 위한 workflow_dispatch
   workflow_dispatch:
 
 jobs:

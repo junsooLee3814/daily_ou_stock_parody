@@ -1,9 +1,10 @@
 name: YouTube Upload (OU Stock Parody)
 
 on:
-  schedule:
-      # 매일 오전 4:30 KST (전날 19:30 UTC)에 실행
-    - cron: '30 19 * * *'
+  # ⏸️ 스케줄 자동 실행 중지됨. 재개하려면 아래 schedule 3줄의 주석(#)을 풀고 push하세요.
+  # schedule:
+  #   # 매일 오전 4:30 KST (전날 19:30 UTC)에 실행
+  #   - cron: '30 19 * * *'
   workflow_dispatch:
 
 jobs:
